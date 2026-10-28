@@ -1,0 +1,1390 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lenguaje WENO</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 64 64%22%3E%3Crect width=%2264%22 height=%2264%22 rx=%2212%22 fill=%22%230d1013%22/%3E%3Ctext x=%2210%22 y=%2246%22 font-family=%22Arial Black,Arial%22 font-weight=%22900%22 font-size=%2238%22 fill=%22%23e4ebf1%22%3EW%3C/text%3E%3Ccircle cx=%2253%22 cy=%2244%22 r=%225%22 fill=%22%23ff7a1a%22/%3E%3C/svg%3E">
+<meta name="description" content="WENO: lenguaje de etiquetas en español, libre y gratuito, que genera ZPL para impresoras Zebra. Si es chileno, es weno.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@500;700&family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&family=Roboto+Condensed:wght@500;700&family=Atkinson+Hyperlegible:wght@400;700&family=IBM+Plex+Sans:wght@700&family=Exo+2:wght@400;700&family=JetBrains+Mono:wght@700&family=Nunito:wght@400;800&family=Merriweather:wght@400;700&family=Barlow+Condensed:wght@500;700&family=Caveat:wght@500;700&family=Orbitron:wght@500;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* Mundo único: consola de taller nocturna, papel térmico como única superficie clara. */
+  --bg: #0d1013;
+  --panel: #141a1f;
+  --raise: #1b232a;
+  --line: #27313b;
+  --ink: #e4ebf1;
+  --muted: #8796a5;
+  --accent: #ff7a1a;
+  --cyan: #6fd3ff;
+  --ok: #4fd18b;
+  --warn: #ffc24a;
+  --err: #ff5d6c;
+  --paper: #fbfaf6;
+  --display: "Unbounded", "Arial Black", system-ui, sans-serif;
+  --body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  /* Layout: barra superior, editor a la izquierda, salida con pestañas a la derecha. */
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.5 var(--body);
+  display: flex;
+  flex-direction: column;
+}
+button, select, input { font: inherit; color: inherit; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Barra superior */
+header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--panel);
+  flex-wrap: wrap;
+}
+.brand { display: flex; align-items: baseline; gap: 12px; }
+.brand h1 {
+  font: 700 20px/1 var(--display);
+  letter-spacing: .14em;
+  margin: 0;
+}
+.brand h1 span { color: var(--accent); }
+.brand p { margin: 0; color: var(--muted); font-size: 13px; }
+.toolbar { margin-left: auto; display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.btn {
+  border: 1px solid var(--line);
+  background: var(--raise);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+.btn:hover { border-color: var(--muted); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #1a0d02; font-weight: 600; }
+.btn.primary:hover { filter: brightness(1.08); }
+select.btn { padding-right: 8px; }
+label.inline { color: var(--muted); font-size: 13px; display: flex; gap: 6px; align-items: center; }
+
+/* Área principal */
+main {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: minmax(320px, 1fr) minmax(320px, 1.15fr);
+}
+.pane { min-height: 0; display: flex; flex-direction: column; }
+.pane + .pane { border-left: 1px solid var(--line); }
+.pane-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 12px;
+  height: 40px;
+  border-bottom: 1px solid var(--line);
+  font-size: 13px;
+  color: var(--muted);
+  flex-shrink: 0;
+}
+.pane-head .file { font-family: var(--mono); color: var(--ink); }
+.pane-head .right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+
+/* Editor con resaltado */
+.editor {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  background: var(--bg);
+}
+.gutter {
+  width: 46px;
+  flex-shrink: 0;
+  overflow: hidden;
+  padding: 14px 8px 14px 0;
+  text-align: right;
+  color: #4d5a67;
+  font: 13.5px/22px var(--mono);
+  user-select: none;
+  border-right: 1px solid var(--line);
+}
+.gutter div.cur { color: var(--ink); }
+.gutter div.bad { color: var(--err); }
+.gutter div.wrn { color: var(--warn); }
+.code { position: relative; flex: 1; min-width: 0; }
+.code pre, .code textarea {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  padding: 14px 16px;
+  font: 13.5px/22px var(--mono);
+  white-space: pre;
+  overflow: auto;
+  tab-size: 2;
+  border: 0;
+  letter-spacing: 0;
+}
+.code pre { pointer-events: none; color: var(--ink); }
+.code textarea {
+  background: transparent;
+  color: transparent;
+  caret-color: var(--accent);
+  resize: none;
+  outline: none;
+}
+.code textarea::selection { background: rgba(111, 211, 255, .25); color: transparent; }
+.tk-com { color: #5f6e7c; font-style: italic; }
+.tk-str { color: var(--cyan); }
+.tk-cmd { color: var(--accent); font-weight: 600; }
+.tk-num { color: #ffd59a; }
+.tk-at { color: var(--accent); }
+.tk-prop { color: #b9a6ff; }
+.tk-var { color: var(--ok); }
+.tk-po { color: var(--accent); font-style: italic; opacity: .8; }
+
+/* Diagnóstico */
+.diag {
+  border-top: 1px solid var(--line);
+  background: var(--panel);
+  max-height: 140px;
+  overflow: auto;
+  flex-shrink: 0;
+  font-size: 13px;
+}
+.diag-row {
+  display: flex;
+  gap: 10px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--line);
+  cursor: pointer;
+  align-items: baseline;
+}
+.diag-row:hover { background: var(--raise); }
+.chip {
+  font: 600 11px/1 var(--mono);
+  padding: 3px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: .04em;
+}
+.chip.ok { background: rgba(79, 209, 139, .15); color: var(--ok); }
+.chip.err { background: rgba(255, 93, 108, .15); color: var(--err); }
+.chip.wrn { background: rgba(255, 194, 74, .15); color: var(--warn); }
+.diag-row .ln { font-family: var(--mono); color: var(--muted); flex-shrink: 0; }
+
+/* Pestañas de salida */
+.tabs { display: flex; gap: 2px; height: 100%; }
+.tab {
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 0 12px;
+  cursor: pointer;
+  color: var(--muted);
+  height: 100%;
+}
+.tab[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
+.view { flex: 1; min-height: 0; display: none; }
+.view.on { display: flex; flex-direction: column; }
+
+/* Vista previa */
+.stage {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  place-items: center;
+  padding: 32px;
+  background-color: var(--bg);
+  background-image: radial-gradient(circle, #222b33 1px, transparent 1.2px);
+  background-size: 16px 16px;
+}
+.paper-wrap { position: relative; }
+.paper-wrap canvas {
+  display: block;
+  background: var(--paper);
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(255,255,255,.06), 0 18px 50px rgba(0,0,0,.55);
+}
+.paper-wrap canvas.termico { image-rendering: pixelated; }
+.paper-wrap .hl {
+  position: absolute;
+  border: 1.5px dashed var(--accent);
+  border-radius: 2px;
+  pointer-events: none;
+  display: none;
+  box-shadow: 0 0 0 3px rgba(255, 122, 26, .12);
+}
+.dims {
+  position: absolute;
+  top: -22px;
+  left: 0;
+  font: 11px var(--mono);
+  color: var(--muted);
+  white-space: nowrap;
+}
+.statusbar {
+  display: flex;
+  gap: 18px;
+  padding: 6px 12px;
+  border-top: 1px solid var(--line);
+  font: 12px var(--mono);
+  color: var(--muted);
+  background: var(--panel);
+  flex-shrink: 0;
+  flex-wrap: wrap;
+}
+.statusbar b { color: var(--ink); font-weight: 600; }
+
+/* ZPL */
+.zpl {
+  flex: 1;
+  margin: 0;
+  overflow: auto;
+  padding: 16px;
+  font: 13px/1.6 var(--mono);
+  color: var(--ink);
+  white-space: pre;
+}
+.zpl .z-cmd { color: var(--accent); }
+.zpl .z-fd { color: var(--cyan); }
+.zpl-note { padding: 10px 16px; border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; background: var(--panel); }
+.zpl-note a { color: var(--cyan); }
+
+/* Referencia */
+.ref { flex: 1; overflow: auto; padding: 20px 24px 40px; }
+.ref h2 { font: 700 15px/1.3 var(--display); letter-spacing: .06em; margin: 26px 0 8px; text-wrap: balance; }
+.ref h2:first-child { margin-top: 0; }
+.ref p, .ref li { max-width: 68ch; color: #c6d0d9; }
+.ref code { font-family: var(--mono); font-size: 12.5px; background: var(--raise); padding: 1px 5px; border-radius: 4px; color: var(--ink); }
+.ref pre { font: 12.5px/1.6 var(--mono); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; overflow-x: auto; }
+.ref table { border-collapse: collapse; width: 100%; font-size: 13px; }
+.ref .tbl { overflow-x: auto; }
+.ref th, .ref td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.ref th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .05em; }
+.ref td:first-child { white-space: nowrap; }
+.ref td:first-child code { color: var(--accent); }
+
+.toast {
+  position: fixed;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--raise);
+  border: 1px solid var(--line);
+  padding: 8px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  opacity: 0;
+  transition: opacity .2s;
+  pointer-events: none;
+}
+.toast.on { opacity: 1; }
+
+@media (max-width: 860px) {
+  main { grid-template-columns: 1fr; grid-template-rows: minmax(340px, 48vh) minmax(460px, auto); }
+  body { height: auto; min-height: 100%; }
+  html { height: auto; }
+  .pane + .pane { border-left: 0; border-top: 1px solid var(--line); }
+  .brand p { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/jsbarcode@3.11.6/dist/JsBarcode.all.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/qrcode-generator@1.4.4/qrcode.js"></script>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <h1>WENO<span>.</span></h1>
+    <p>Si es chileno, es weno. Lenguaje de etiquetas en español, libre y gratuito, que genera ZPL.</p>
+  </div>
+  <div class="toolbar">
+    <label class="inline" for="ejemplos">Ejemplo
+      <select id="ejemplos" class="btn">
+        <option value="envio">Envío</option>
+        <option value="producto">Producto con precio</option>
+        <option value="activo">Activo fijo con QR</option>
+        <option value="credencial">Credencial de evento</option>
+      </select>
+    </label>
+    <button id="copiarNova" class="btn" type="button">Copiar código WENO</button>
+    <button id="copiarZpl" class="btn primary" type="button">Copiar ZPL</button>
+  </div>
+</header>
+
+<main>
+  <section class="pane" aria-label="Editor">
+    <div class="pane-head">
+      <span class="file" id="nombreArchivo">envio.weno</span>
+      <span class="right" id="estadoGeneral"></span>
+    </div>
+    <div class="editor">
+      <div class="gutter" id="gutter" aria-hidden="true"></div>
+      <div class="code">
+        <pre id="hl" aria-hidden="true"></pre>
+        <textarea id="src" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Código WENO"></textarea>
+      </div>
+    </div>
+    <div class="diag" id="diag" aria-live="polite"></div>
+  </section>
+
+  <section class="pane" aria-label="Salida">
+    <div class="pane-head">
+      <div class="tabs" role="tablist">
+        <button class="tab" role="tab" id="tab-vista" aria-selected="true" data-view="vista" type="button">Vista previa</button>
+        <button class="tab" role="tab" id="tab-zpl" aria-selected="false" data-view="zpl" type="button">ZPL generado</button>
+        <button class="tab" role="tab" id="tab-ref" aria-selected="false" data-view="ref" type="button">Referencia</button>
+      </div>
+      <div class="right">
+        <label class="inline" for="termico" title="Muestra los puntos tal como los imprime la cabeza térmica"><input id="termico" type="checkbox"> Puntos reales</label>
+        <label class="inline" for="zoom">Zoom <input id="zoom" type="range" min="0.5" max="3" step="0.25" value="1"></label>
+      </div>
+    </div>
+
+    <div class="view on" id="view-vista" role="tabpanel" aria-labelledby="tab-vista">
+      <div class="stage" id="stage">
+        <div class="paper-wrap" id="paperWrap">
+          <div class="dims" id="dims"></div>
+          <canvas id="cv" width="800" height="480"></canvas>
+          <div class="hl" id="hlBox"></div>
+        </div>
+      </div>
+      <div class="statusbar">
+        <span>Cursor <b id="pos">–</b></span>
+        <span>Tamaño <b id="tam">–</b></span>
+        <span>Densidad <b id="dpiInfo">–</b></span>
+        <span>Elementos <b id="nEl">–</b></span>
+      </div>
+    </div>
+
+    <div class="view" id="view-zpl" role="tabpanel" aria-labelledby="tab-zpl">
+      <pre class="zpl" id="zpl"></pre>
+      <div class="zpl-note">Envía este código a cualquier impresora Zebra (puerto 9100, Zebra Setup Utilities o el driver en modo texto). Puedes probarlo sin impresora en <a href="https://labelary.com/viewer.html" target="_blank" rel="noopener">labelary.com/viewer.html</a>.</div>
+    </div>
+
+    <div class="view" id="view-ref" role="tabpanel" aria-labelledby="tab-ref">
+      <div class="ref">
+        <h2>Idea</h2>
+        <p>WENO describe una etiqueta como una lista de órdenes en español, una por línea. Todas las medidas son en milímetros (también acepta <code>cm</code>). El origen <code>0,0</code> es la esquina superior izquierda. Las tildes y mayúsculas son opcionales: <code>línea</code>, <code>linea</code> y <code>LINEA</code> son lo mismo.</p>
+        <pre>orden "valor" @ x,y  propiedad valor  bandera ...</pre>
+
+        <h2>Cabecera</h2>
+        <div class="tbl"><table>
+          <tr><th>Orden</th><th>Qué hace</th><th>Ejemplo</th></tr>
+          <tr><td><code>etiqueta</code></td><td>Tamaño de la etiqueta (ancho x alto). Acepta <code>densidad</code> y <code>copias</code> en la misma línea.</td><td><code>etiqueta 100x60 densidad 203</code></td></tr>
+          <tr><td><code>densidad</code></td><td>Puntos por pulgada de la impresora: 152, 203, 300 o 600. Por defecto 203.</td><td><code>densidad 300</code></td></tr>
+          <tr><td><code>copias</code></td><td>Cuántas etiquetas imprimir.</td><td><code>copias 5</code></td></tr>
+          <tr><td><code>fuente</code></td><td>Letra para todos los textos. Cada texto puede cambiarla con su propia <code>fuente …</code>. Ver la tabla de fuentes más abajo.</td><td><code>fuente legible</code></td></tr>
+          <tr><td><code>var</code></td><td>Define una variable. Úsala en cualquier texto con <code>{nombre}</code>. Incluidas: <code>{fecha}</code>, <code>{hora}</code>.</td><td><code>var cliente = "Ana Pérez"</code></td></tr>
+        </table></div>
+
+        <h2>Elementos</h2>
+        <div class="tbl"><table>
+          <tr><th>Orden</th><th>Propiedades</th><th>Ejemplo</th></tr>
+          <tr><td><code>texto</code></td><td><code>tam</code> alto de letra (4) · <code>negrita</code> · <code>ancho</code> caja de texto · <code>lineas</code> máx. de líneas · <code>centro</code> / <code>derecha</code> / <code>justificado</code> · <code>girar</code> 90/180/270 · <code>blanco</code> texto invertido · <code>fuente</code> solo para este texto</td><td><code>texto "Hola" @ 5,5 tam 6 negrita</code></td></tr>
+          <tr><td><code>caja</code></td><td>tamaño <code>AxB</code> · <code>borde</code> (0.3) · <code>radio</code> esquinas · <code>relleno</code></td><td><code>caja @ 2,2 96x56 borde 0.5 radio 2</code></td></tr>
+          <tr><td><code>linea</code></td><td><code>a x,y</code> punto final · <code>grosor</code> (0.3). Horizontal, vertical o diagonal.</td><td><code>linea @ 2,20 a 98,20 grosor 0.4</code></td></tr>
+          <tr><td><code>circulo</code></td><td><code>diam</code> diámetro · <code>borde</code> · <code>relleno</code></td><td><code>circulo @ 80,5 diam 12 relleno</code></td></tr>
+          <tr><td><code>barras</code></td><td><code>tipo</code> code128 / code39 / ean13 · <code>alto</code> (12) · <code>modulo</code> barra fina en mm (0.25) · <code>sintexto</code></td><td><code>barras "ABC-123" @ 5,30 alto 15</code></td></tr>
+          <tr><td><code>qr</code></td><td><code>tam</code> lado aproximado (20) · <code>nivel</code> L / M / Q / H</td><td><code>qr "https://mi.sitio" @ 70,30 tam 25</code></td></tr>
+        </table></div>
+
+        <h2>Fuentes</h2>
+        <p>Las fuentes libres se dibujan en WENO y viajan como imagen: se imprimen idénticas en cualquier Zebra. Las <code>zebra/…</code> usan las letras que trae la impresora: ZPL más corto e impresión más rápida.</p>
+        <div class="tbl"><table>
+          <tr><th>Nombre</th><th>Letra</th><th>Uso sugerido</th></tr>
+          <tr><td><code>legible</code></td><td>Atkinson Hyperlegible</td><td>Máxima lectura, la más recomendada</td></tr>
+          <tr><td><code>moderna</code></td><td>IBM Plex Sans</td><td>Limpia y técnica</td></tr>
+          <tr><td><code>futurista</code></td><td>Exo 2</td><td>Títulos con aire tecnológico</td></tr>
+          <tr><td><code>mono</code></td><td>JetBrains Mono</td><td>Códigos, series, lotes</td></tr>
+          <tr><td><code>redonda</code></td><td>Nunito</td><td>Amable: alimentos, niños, retail</td></tr>
+          <tr><td><code>clasica</code></td><td>Merriweather</td><td>Con serifa: vinos, gourmet, artesanal</td></tr>
+          <tr><td><code>condensada</code></td><td>Barlow Condensed</td><td>Mucho texto en poco ancho</td></tr>
+          <tr><td><code>manuscrita</code></td><td>Caveat</td><td>Toque a mano: regalos, notas</td></tr>
+          <tr><td><code>digital</code></td><td>Orbitron</td><td>Ciencia ficción, gamer, tecnología</td></tr>
+          <tr><td><code>zebra</code> = <code>zebra/0</code></td><td>Fuente 0 de la impresora</td><td>Predeterminada, escalable</td></tr>
+          <tr><td><code>zebra/A</code> … <code>zebra/H</code></td><td>Mapa de bits residentes: A 9×5, B 11×7 (mayúsculas), C y D 18×10, E OCR-B, F 26×13, G 60×40, H OCR-A (mayúsculas)</td><td>Crecen en múltiplos enteros según <code>tam</code></td></tr>
+          <tr><td><code>zebra/P</code> … <code>zebra/V</code></td><td>Fuente 0 en tamaños fijos, de 20 a 80 puntos</td><td>Solo en algunos modelos</td></tr>
+          <tr><td><code>zebra/E:ARCHIVO.TTF</code></td><td>Cualquier fuente instalada en la impresora (ej. <code>zebra/E:TT0003M_.TTF</code>, Swiss 721)</td><td>Usa <code>^A@</code>; vista previa aproximada</td></tr>
+        </table></div>
+
+        <h2>Posición</h2>
+        <p><code>@ x,y</code> marca la esquina superior izquierda del elemento. Escribe <code>centro</code> en lugar de x para centrar el elemento en el ancho de la etiqueta: <code>@ centro,8</code>.</p>
+
+        <h2>Comentarios</h2>
+        <p>Todo lo que viene después de <code>//</code> o <code>#</code> se ignora.</p>
+
+        <h2>El toque chileno</h2>
+        <p>Cualquier línea puede terminar en <code>po</code>. Es opcional y WENO lo ignora: <code>copias 3 po</code> funciona igual que <code>copias 3</code>.</p>
+
+        <h2>Traducción a ZPL</h2>
+        <div class="tbl"><table>
+          <tr><th>WENO</th><th>ZPL</th></tr>
+          <tr><td><code>etiqueta</code></td><td><code>^XA ^CI28 ^PW ^LL … ^XZ</code></td></tr>
+          <tr><td><code>texto</code></td><td><code>^FO ^A0 ^FB ^FR ^FD ^FS</code> con fuente zebra; con las demás fuentes, una imagen <code>^GFA</code> comprimida</td></tr>
+          <tr><td><code>caja</code> / <code>linea</code></td><td><code>^GB</code>, diagonales con <code>^GD</code></td></tr>
+          <tr><td><code>circulo</code></td><td><code>^GC</code></td></tr>
+          <tr><td><code>barras</code></td><td><code>^BY ^BC</code>, <code>^B3</code>, <code>^BE</code></td></tr>
+          <tr><td><code>qr</code></td><td><code>^BQN</code></td></tr>
+          <tr><td><code>copias</code></td><td><code>^PQ</code></td></tr>
+        </table></div>
+        <h2>Aviso de marcas</h2>
+        <p>ZPL es una marca registrada de Zebra Technologies Corporation. WENO es un proyecto independiente que genera código ZPL; no está afiliado ni respaldado por Zebra.</p>
+        <p>Con <code>fuente zebra</code> la vista previa imita la fuente 0 de la impresora y el ancho real puede variar levemente. Con las demás fuentes WENO dibuja el texto y lo envía como imagen: lo impreso es idéntico a la vista previa, funciona en cualquier Zebra sin instalar nada, y el ZPL resulta más largo.</p>
+      </div>
+    </div>
+  </section>
+</main>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+"use strict";
+/* ================== Ejemplos ================== */
+const EJEMPLOS = {
+  envio: `// Etiqueta de envío 100 x 60 mm. Si es chileno, es weno.
+etiqueta 100x60 densidad 203 po
+fuente legible   // mira la pestaña Referencia para ver todas
+
+var destino = "Valentina Rojas"
+var ciudad  = "Valparaíso, Chile"
+var guia    = "NV-2026-004815"
+
+caja @ 2,2 96x56 borde 0.6 radio 1
+caja @ 2,2 96x10 relleno
+texto "ENVÍO EXPRESS" @ 5,4 tam 6 negrita blanco
+texto "{fecha}" @ 60,4.5 tam 4 ancho 35 derecha blanco
+
+texto "PARA" @ 6,15 tam 3
+texto "{destino}" @ 6,19 tam 6 negrita
+texto "{ciudad}" @ 6,26 tam 4.5
+
+linea @ 2,33 a 98,33 grosor 0.4
+barras "{guia}" @ 6,37 alto 13 modulo 0.25
+qr "https://seguimiento.ejemplo.cl/{guia}" @ 74,36 tam 20
+`,
+  producto: `// Etiqueta de góndola 60 x 40 mm
+etiqueta 60x40 densidad 203
+
+texto "Café de grano tostado" @ centro,2.5 tam 4.5 negrita
+texto "Bolsa 500 g · Origen Colombia" @ centro,8 tam 3
+
+texto "$" @ 4,14 tam 5 negrita
+texto "8.990" @ 8,12 tam 10 negrita
+texto "Precio por kg" @ 38,13.5 tam 2.6
+texto "$17.980" @ 38,17 tam 3.6 negrita
+
+linea @ 2,24.5 a 58,24.5 grosor 0.3
+barras "780123456789" @ centro,26.5 tipo ean13 alto 8 modulo 0.25
+`,
+  activo: `# Activo fijo para inventario, 50 x 30 mm
+etiqueta 50x30 densidad 300
+
+var codigo = "AF-00731"
+
+caja @ 1,1 48x28 borde 0.4 radio 2
+qr "inventario://activo/{codigo}" @ 3,4 tam 18 nivel Q
+
+texto "PROPIEDAD DE" @ 23,4 tam 2.4
+texto "Taller Aurora" @ 23,7.5 tam 3.4 negrita
+texto "{codigo}" @ 23,13 tam 4.5 negrita
+linea @ 23,19.5 a 46,19.5 grosor 0.3
+texto "No retirar" @ 23,21 tam 2.6
+texto "este sello" @ 23,24 tam 2.6
+`,
+  credencial: `// Credencial 86 x 54 mm (tamaño tarjeta)
+etiqueta 86x54 densidad 300
+
+var nombre = "Matías Fuentes"
+var rol    = "PONENTE"
+
+caja @ 0,0 86x14 relleno
+texto "FUTURA CONF 2026" @ centro,4 tam 6 negrita blanco
+circulo @ 6,19 diam 14 borde 0.8
+texto "MF" @ 6,23.5 tam 6 negrita ancho 14 centro
+
+texto "{nombre}" @ 24,20 tam 6 negrita
+texto "{rol}" @ 24,28 tam 4
+linea @ 24,34 a 82,34 grosor 0.3
+texto "Santiago · 12 y 13 de noviembre" @ 24,36 tam 3
+
+barras "FC26-0142" @ 6,42 tipo code39 alto 8 modulo 0.19 sintexto
+texto "FC26-0142" @ 60,45 tam 3 ancho 22 derecha
+`
+};
+
+/* ================== Utilidades ================== */
+const $ = id => document.getElementById(id);
+const norm = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
+function lev(a, b) {
+  const m = a.length, n = b.length, d = Array.from({ length: m + 1 }, (_, i) => [i]);
+  for (let j = 1; j <= n; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n; j++)
+    d[i][j] = Math.min(d[i-1][j] + 1, d[i][j-1] + 1, d[i-1][j-1] + (a[i-1] === b[j-1] ? 0 : 1));
+  return d[m][n];
+}
+function sugerir(w, lista) {
+  let best = null, bd = 3;
+  for (const c of lista) { const d = lev(w, c); if (d < bd) { bd = d; best = c; } }
+  return best ? ` ¿Quisiste decir «${best}»?` : "";
+}
+
+/* ================== Lenguaje ================== */
+const ORDENES = ["etiqueta", "densidad", "copias", "fuente", "var", "texto", "caja", "linea", "circulo", "barras", "qr"];
+const ALIAS = { "codigo": "barras", "codigobarras": "barras", "rectangulo": "caja", "cuadro": "caja", "circ": "circulo", "variable": "var", "dpi": "densidad", "txt": "texto" };
+
+// Propiedades por orden: tipo num | int | flag | enum:[...]
+const PROPS = {
+  etiqueta: { densidad: "int", copias: "int" },
+  texto:  { tam: "num", negrita: "flag", ancho: "num", lineas: "int", centro: "flag", derecha: "flag", izquierda: "flag", justificado: "flag", girar: ["0", "90", "180", "270"], blanco: "flag", fuente: "fuente" },
+  caja:   { borde: "num", radio: "num", relleno: "flag", ancho: "num", alto: "num" },
+  linea:  { grosor: "num" },
+  circulo:{ diam: "num", borde: "num", relleno: "flag" },
+  barras: { alto: "num", tipo: ["code128", "code39", "ean13"], modulo: "num", sintexto: "flag", sin_texto: "flag" },
+  qr:     { tam: "num", nivel: ["l", "m", "q", "h"] }
+};
+const PROP_ALIAS = { "tamano": "tam", "tamaño": "tam", "size": "tam", "bold": "negrita", "centrado": "centro", "rotar": "girar", "rotacion": "girar", "invertido": "blanco", "grueso": "grosor", "diametro": "diam", "lleno": "relleno", "relleno": "relleno", "redondeo": "radio", "barra": "modulo" };
+
+function tokenizar(linea) {
+  const out = [];
+  const re = /\s*(?:("(?:[^"\\]|\\.)*"?)|(@)|(,)|(=)|([^\s@,="]+))/y;
+  let m;
+  re.lastIndex = 0;
+  while (re.lastIndex < linea.length) {
+    const start = re.lastIndex;
+    m = re.exec(linea);
+    if (!m || m[0].length === 0) break;
+    const off = start + m[0].length - (m[1] || m[2] || m[3] || m[4] || m[5] || "").length;
+    if (m[1] !== undefined) out.push({ t: "str", v: m[1], s: off });
+    else if (m[2]) out.push({ t: "@", v: "@", s: off });
+    else if (m[3]) out.push({ t: ",", v: ",", s: off });
+    else if (m[4]) out.push({ t: "=", v: "=", s: off });
+    else {
+      const w = m[5];
+      if (w.startsWith("#") || w.startsWith("//")) { out.push({ t: "com", v: linea.slice(off), s: off }); break; }
+      const ci = w.indexOf("//");
+      if (ci > 0) {
+        out.push({ t: "word", v: w.slice(0, ci), s: off });
+        out.push({ t: "com", v: linea.slice(off + ci), s: off + ci });
+        break;
+      }
+      out.push({ t: "word", v: w, s: off });
+    }
+  }
+  return out;
+}
+
+class ErrNova extends Error {}
+
+function leerLong(tok, nombre) {
+  if (!tok || tok.t !== "word") throw new ErrNova(`Falta un número para ${nombre}.`);
+  const mm = /^(-?\d+(?:\.\d+)?)(mm|cm)?$/i.exec(tok.v);
+  if (!mm) throw new ErrNova(`«${tok.v}» no es una medida válida para ${nombre}. Usa números como 12 o 12.5 (el decimal va con punto).`);
+  const n = parseFloat(mm[1]);
+  return (mm[2] && mm[2].toLowerCase() === "cm") ? n * 10 : n;
+}
+function leerDim(v) {
+  const m = /^(\d+(?:\.\d+)?)x(\d+(?:\.\d+)?)(mm|cm)?$/i.exec(v);
+  if (!m) return null;
+  const k = (m[3] && m[3].toLowerCase() === "cm") ? 10 : 1;
+  return [parseFloat(m[1]) * k, parseFloat(m[2]) * k];
+}
+function fechaHoy() {
+  const d = new Date(), p = n => String(n).padStart(2, "0");
+  return { fecha: `${p(d.getDate())}-${p(d.getMonth() + 1)}-${d.getFullYear()}`, hora: `${p(d.getHours())}:${p(d.getMinutes())}` };
+}
+function leerCadena(tok, vars) {
+  let s = tok.v;
+  if (!s.endsWith("\"") || s.length < 2) throw new ErrNova("Falta cerrar las comillas del texto.");
+  s = s.slice(1, -1).replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
+  return s.replace(/\{([^{}]+)\}/g, (_, n) => {
+    const k = norm(n.trim());
+    if (!(k in vars)) throw new ErrNova(`La variable {${n}} no existe. Defínela antes con: var ${n} = "…"` );
+    return vars[k];
+  });
+}
+
+function analizar(codigo) {
+  const doc = { ancho: 100, alto: 60, dpi: 203, copias: 1, elems: [], diag: [], tieneEtiqueta: false };
+  const vars = fechaHoy();
+  const lineas = codigo.split("\n");
+  lineas.forEach((texto, i) => {
+    const ln = i + 1;
+    let toks = tokenizar(texto).filter(t => t.t !== "com");
+    // «po» al final de la línea es opcional: si es chileno, es weno
+    if (toks.length > 1 && toks[toks.length - 1].t === "word" && norm(toks[toks.length - 1].v) === "po") toks.pop();
+    if (!toks.length) return;
+    try {
+      const t0 = toks[0];
+      if (t0.t !== "word") throw new ErrNova("Cada línea debe empezar con una orden, por ejemplo: texto, caja, barras.");
+      let cmd = norm(t0.v);
+      cmd = ALIAS[cmd] || cmd;
+      if (!ORDENES.includes(cmd)) throw new ErrNova(`No conozco la orden «${t0.v}».${sugerir(cmd, ORDENES)}`);
+      let k = 1;
+      const next = () => toks[k++];
+
+      if (cmd === "var") {
+        const n = next();
+        if (!n || n.t !== "word") throw new ErrNova("Escribe el nombre de la variable: var nombre = \"valor\"");
+        let v = next();
+        if (v && v.t === "=") v = next();
+        if (!v || v.t !== "str") throw new ErrNova(`Falta el valor entre comillas para la variable ${n.v}.`);
+        vars[norm(n.v)] = leerCadena(v, vars);
+        return;
+      }
+      if (cmd === "densidad") {
+        const v = next();
+        doc.dpi = Math.round(leerLong(v, "densidad"));
+        if (![152, 203, 300, 600].includes(doc.dpi)) doc.diag.push({ ln, tipo: "wrn", msg: `Densidad ${doc.dpi} poco común. Las impresoras Zebra usan 152, 203, 300 o 600 ppp.` });
+        return;
+      }
+      if (cmd === "fuente") {
+        const v = next();
+        if (!v) throw new ErrNova("Indica la fuente, por ejemplo: fuente legible  o  fuente zebra/D");
+        doc.fuente = leerFuente(v.v);
+        return;
+      }
+      if (cmd === "copias") {
+        doc.copias = Math.max(1, Math.round(leerLong(next(), "copias")));
+        return;
+      }
+
+      const el = { cmd, ln, p: {} };
+      if (cmd === "etiqueta") {
+        const d = next();
+        const dim = d && d.t === "word" ? leerDim(d.v) : null;
+        if (!dim) throw new ErrNova("Indica el tamaño como ancho x alto en mm, por ejemplo: etiqueta 100x60");
+        [doc.ancho, doc.alto] = dim;
+        doc.tieneEtiqueta = true;
+      }
+      if (["texto", "barras", "qr"].includes(cmd)) {
+        const v = next();
+        if (!v || v.t !== "str") throw new ErrNova(`${cmd} necesita su contenido entre comillas, por ejemplo: ${cmd} "ABC" @ 5,5`);
+        el.valor = leerCadena(v, vars);
+        if (!el.valor.length) throw new ErrNova(`El contenido de ${cmd} está vacío.`);
+      }
+      if (cmd !== "etiqueta") {
+        const at = next();
+        if (!at || at.t !== "@") throw new ErrNova(`Falta la posición. Escribe @ x,y después de ${cmd}${el.valor !== undefined ? " y su texto" : ""}.`);
+        const xt = next();
+        if (xt && xt.t === "word" && norm(xt.v) === "centro") el.x = "centro";
+        else el.x = leerLong(xt, "x");
+        if (next()?.t !== ",") throw new ErrNova("La posición se escribe x,y (separados por coma, sin espacios raros).");
+        el.y = leerLong(next(), "y");
+        if (cmd === "linea") {
+          const a = next();
+          if (!a || norm(a.v) !== "a") throw new ErrNova("Indica el punto final de la línea: linea @ x1,y1 a x2,y2");
+          el.x2 = leerLong(next(), "x final");
+          if (next()?.t !== ",") throw new ErrNova("El punto final se escribe x,y.");
+          el.y2 = leerLong(next(), "y final");
+          if (el.x === "centro") throw new ErrNova("La línea no admite «centro»; usa coordenadas.");
+        }
+      }
+      // propiedades
+      const defs = PROPS[cmd] || {};
+      while (k < toks.length) {
+        const t = next();
+        if (t.t !== "word") throw new ErrNova(`No esperaba «${t.v}» aquí.`);
+        const dim = leerDim(t.v);
+        if (dim && (cmd === "caja" || cmd === "circulo")) { el.p.ancho = dim[0]; el.p.alto = dim[1]; continue; }
+        let pn = norm(t.v);
+        pn = PROP_ALIAS[pn] || pn;
+        if (pn === "izq") pn = "izquierda";
+        if (!(pn in defs)) throw new ErrNova(`${cmd} no tiene la propiedad «${t.v}».${sugerir(pn, Object.keys(defs))}`);
+        const tipo = defs[pn];
+        if (tipo === "flag") { el.p[pn] = true; continue; }
+        const vt = next();
+        if (!vt) throw new ErrNova(`Falta el valor de ${pn}.`);
+        if (tipo === "fuente") { el.p[pn] = leerFuente(vt.v); continue; }
+        if (Array.isArray(tipo)) {
+          const vv = norm(vt.v.replace(/"/g, ""));
+          if (!tipo.includes(vv)) throw new ErrNova(`${pn} acepta: ${tipo.join(", ")}.`);
+          el.p[pn] = vv;
+        } else {
+          let n = leerLong(vt, pn);
+          if (tipo === "int") n = Math.round(n);
+          if (n < 0) throw new ErrNova(`${pn} no puede ser negativo.`);
+          el.p[pn] = n;
+        }
+      }
+      if (cmd === "etiqueta") {
+        if (el.p.densidad) doc.dpi = el.p.densidad;
+        if (el.p.copias) doc.copias = el.p.copias;
+        return;
+      }
+      if (cmd === "caja" && !(el.p.ancho > 0 && el.p.alto > 0)) throw new ErrNova("La caja necesita tamaño: caja @ x,y 40x20");
+      if (cmd === "circulo") {
+        if (!el.p.diam) el.p.diam = el.p.ancho || 0;
+        if (!(el.p.diam > 0)) throw new ErrNova("El círculo necesita diámetro: circulo @ x,y diam 10");
+      }
+      if (cmd === "barras" && el.p.sin_texto) el.p.sintexto = true;
+      if (cmd === "texto") {
+        el.p.fuente = el.p.fuente || doc.fuente || { k: "zebra", id: "0" };
+        const f = el.p.fuente;
+        if (f.k === "zbit" && ZBITMAP[f.id].mayus && /[a-zà-ÿ]/.test(el.valor))
+          doc.diag.push({ ln, tipo: "wrn", msg: `La fuente zebra/${f.id} solo tiene mayúsculas: el texto se imprimirá en mayúsculas.` });
+        if (f.k === "zbit" && ZBITMAP[f.id].fijo && el.p.tam != null)
+          doc.diag.push({ ln, tipo: "wrn", msg: `zebra/${f.id} tiene un tamaño fijo de ${ZBITMAP[f.id].h} puntos; «tam» no la cambia. Solo existe en algunos modelos.` });
+        if (f.k === "zfile")
+          doc.diag.push({ ln, tipo: "wrn", msg: `La fuente ${f.file} debe estar instalada en la impresora. La vista previa es aproximada y Labelary puede mostrar otra letra.` });
+      }
+      doc.elems.push(el);
+    } catch (e) {
+      if (e instanceof ErrNova) doc.diag.push({ ln, tipo: "err", msg: e.message });
+      else { doc.diag.push({ ln, tipo: "err", msg: "Error interno: " + e.message }); console.error(e); }
+    }
+  });
+  if (!doc.tieneEtiqueta) doc.diag.unshift({ ln: 1, tipo: "wrn", msg: "Sin «etiqueta AxB»: uso 100x60 mm por defecto." });
+  return doc;
+}
+
+/* ================== Geometría en puntos ================== */
+function compilar(doc, ctx) {
+  const D = mm => Math.round(mm * doc.dpi / 25.4);
+  const W = D(doc.ancho), H = D(doc.alto);
+  const items = [];
+
+  for (const el of doc.elems) {
+    const it = { el, ln: el.ln };
+    try {
+      if (el.cmd === "texto") {
+        const h = Math.max(6, D(el.p.tam ?? 4));
+        const fw = Math.round(h * (el.p.negrita && el.p.blanco ? 1.0 : 0.9));
+        const rot = el.p.girar || "0";
+        let just = el.p.justificado ? "J" : el.p.derecha ? "R" : el.p.centro ? "C" : "L";
+        let anchoD = el.p.ancho != null ? D(el.p.ancho) : null;
+        let x;
+        if (el.x === "centro") {
+          if (anchoD == null) { x = 0; anchoD = W; just = "C"; }
+          else x = Math.round((W - anchoD) / 2);
+        } else x = D(el.x);
+        const y = D(el.y);
+        const fuente = el.p.fuente, zebra = fuente.k !== "libre";
+        let hh = h, ww = fw, adv = null, zid = null, valor = el.valor;
+        if (fuente.k === "zbit") {
+          const z = ZBITMAP[fuente.id], alta = doc.dpi >= 300 && z.h300;
+          const bh = alta ? z.h300 : z.h, bw = alta ? z.w300 : z.w, gap = alta ? z.g300 : (z.g || 0);
+          const mag = z.fijo ? 1 : Math.max(1, Math.min(10, Math.round(h / bh)));
+          hh = bh * mag; ww = bw * mag;
+          if (!z.fijo) adv = (bw + gap) * mag;
+          if (z.mayus) valor = valor.toUpperCase();
+          zid = fuente.id;
+        }
+        const css = fuenteCss(fuente, hh, !!el.p.negrita);
+        ctx.font = css;
+        let sx = 1;
+        if (fuente.k === "zebra" || (fuente.k === "zbit" && !adv)) sx = ANCHO_F0 * ww / hh;
+        else if (adv) sx = (ww * 1.0) / ctx.measureText("M").width; // ajusta la letra a la celda de la fuente
+        const medir = t => adv ? t.length * adv : ctx.measureText(t).width * sx;
+        const lines = anchoD != null ? partir(medir, valor, anchoD, el.p.lineas || (el.p.ancho != null ? 4 : 1)) : [valor];
+        const tw = anchoD != null ? anchoD : Math.ceil(medir(valor));
+        const th = hh * lines.length;
+        Object.assign(it, { tipo: "texto", fuente, zebra, zid, adv, css, x, y, h: hh, fw: ww, sx, rot, just, anchoD, lines, w: tw, hh: th, bold: !!el.p.negrita, blanco: !!el.p.blanco });
+        const sw = rot === "90" || rot === "270";
+        it.bw = sw ? th : tw; it.bh = sw ? tw : th;
+      } else if (el.cmd === "caja") {
+        const w = Math.max(1, D(el.p.ancho)), h = Math.max(1, D(el.p.alto));
+        const t = el.p.relleno ? Math.min(w, h) : Math.max(1, D(el.p.borde ?? 0.3));
+        const r = el.p.radio ? Math.max(0, Math.min(8, Math.round(el.p.radio / (Math.min(el.p.ancho, el.p.alto) / 2) * 8))) : 0;
+        const x = el.x === "centro" ? Math.round((W - w) / 2) : D(el.x);
+        Object.assign(it, { tipo: "caja", x, y: D(el.y), w, h, t, r, bw: w, bh: h, relleno: !!el.p.relleno });
+      } else if (el.cmd === "circulo") {
+        const d = Math.max(3, D(el.p.diam));
+        const t = el.p.relleno ? Math.ceil(d / 2) : Math.max(1, D(el.p.borde ?? 0.3));
+        const x = el.x === "centro" ? Math.round((W - d) / 2) : D(el.x);
+        Object.assign(it, { tipo: "circulo", x, y: D(el.y), d, t, bw: d, bh: d, relleno: !!el.p.relleno });
+      } else if (el.cmd === "linea") {
+        const x1 = D(el.x), y1 = D(el.y), x2 = D(el.x2), y2 = D(el.y2);
+        const t = Math.max(1, D(el.p.grosor ?? 0.3));
+        const x = Math.min(x1, x2), y = Math.min(y1, y2);
+        const dx = Math.abs(x2 - x1), dy = Math.abs(y2 - y1);
+        let modo = "diag";
+        if (dy === 0) modo = "h"; else if (dx === 0) modo = "v";
+        const caida = (x2 - x1) * (y2 - y1) > 0; // baja hacia la derecha
+        // ^GD aplica el grosor en horizontal: en diagonales poco inclinadas la línea casi desaparece.
+        // Para esas usamos una escalera de tramos rectos (^GB), que se ve continua.
+        let segs = null;
+        if (modo === "diag" && dy * 2 < dx) {
+          modo = "escalera";
+          const [ax, ay, by] = x1 <= x2 ? [x1, y1, y2] : [x2, y2, y1];
+          const sg = by >= ay ? 1 : -1;
+          const n = Math.min(dy + 1, 120);
+          const extra = Math.ceil(dy / n) - 1;
+          segs = [];
+          for (let i = 0; i < n; i++) {
+            const sx0 = ax + Math.round(i * dx / n), ex0 = ax + Math.round((i + 1) * dx / n);
+            const sy0 = ay + sg * Math.round(i * dy / n);
+            segs.push([sx0, sg > 0 ? sy0 : sy0 - extra, Math.max(1, ex0 - sx0), t + extra]);
+          }
+        }
+        Object.assign(it, { tipo: "linea", x, y, x1, y1, x2, y2, t, modo, caida, segs,
+          bw: modo === "v" ? t : Math.max(dx, t), bh: modo === "h" ? t : Math.max(dy + t, t), dx, dy });
+      } else if (el.cmd === "barras") {
+        const tipo = el.p.tipo || "code128";
+        const m = Math.max(1, D(el.p.modulo ?? 0.25));
+        const h = Math.max(4, D(el.p.alto ?? 12));
+        let data = el.valor, fmt, zdata;
+        if (tipo === "code128") {
+          if (/^\d+$/.test(data) && data.length % 2 === 0 && data.length >= 4) { fmt = "CODE128C"; zdata = ">;" + data; }
+          else { fmt = "CODE128B"; zdata = data; if (/[^\x20-\x7e]/.test(data)) throw new ErrNova("Code 128 solo admite caracteres ASCII (sin tildes ni ñ). Usa qr para textos con tildes."); }
+        } else if (tipo === "code39") {
+          data = data.toUpperCase();
+          if (!/^[0-9A-Z\-. $/+%]+$/.test(data)) throw new ErrNova("Code 39 solo admite A-Z, 0-9, espacio y - . $ / + %");
+          fmt = "CODE39"; zdata = data;
+        } else {
+          if (!/^\d{12,13}$/.test(data)) throw new ErrNova("EAN-13 necesita 12 dígitos (el 13.º, verificador, se calcula solo).");
+          const d12 = data.slice(0, 12);
+          const chk = (10 - (d12.split("").reduce((s, c, i) => s + (+c) * (i % 2 ? 3 : 1), 0) % 10)) % 10;
+          if (data.length === 13 && +data[12] !== chk) doc.diag.push({ ln: el.ln, tipo: "wrn", msg: `El dígito verificador debería ser ${chk}; la impresora usará ${d12}${chk}.` });
+          data = d12 + chk; fmt = "EAN13"; zdata = d12;
+        }
+        let bits = "";
+        if (typeof JsBarcode === "function") {
+          const obj = {};
+          JsBarcode(obj, data, { format: fmt, flat: true });
+          bits = obj.encodings.map(e => e.data).join("");
+        } else throw new ErrNova("No se pudo cargar el generador de códigos de barras (revisa tu conexión).");
+        const legible = !el.p.sintexto;
+        const textoH = legible ? Math.max(10, Math.round(m * 9)) : 0;
+        const w = bits.length * m;
+        const x = el.x === "centro" ? Math.round((W - w) / 2) : D(el.x);
+        Object.assign(it, { tipo: "barras", fmt, ztipo: tipo, zdata, data, bits, m, h, x, y: D(el.y), w, legible, textoH, bw: w, bh: h + (legible ? textoH + Math.round(m * 2) : 0) });
+      } else if (el.cmd === "qr") {
+        if (typeof qrcode !== "function") throw new ErrNova("No se pudo cargar el generador de QR (revisa tu conexión).");
+        qrcode.stringToBytes = qrcode.stringToBytesFuncs["UTF-8"];
+        const nivel = (el.p.nivel || "m").toUpperCase();
+        const q = qrcode(0, nivel);
+        q.addData(el.valor, "Byte");
+        q.make();
+        const n = q.getModuleCount();
+        const objetivo = D(el.p.tam ?? 20);
+        let mag = Math.floor(objetivo / n);
+        if (mag < 1) { mag = 1; doc.diag.push({ ln: el.ln, tipo: "wrn", msg: "El QR no cabe en ese tamaño; se dibuja al mínimo posible." }); }
+        if (mag > 10) { mag = 10; doc.diag.push({ ln: el.ln, tipo: "wrn", msg: "ZPL permite ampliar el QR hasta 10 veces; se limitó el tamaño." }); }
+        const s = n * mag;
+        const x = el.x === "centro" ? Math.round((W - s) / 2) : D(el.x);
+        // En Zebra el QR baja (altura de ^BY − 1) puntos respecto de ^FO. Fijamos ^BY en 10 y restamos 9.
+        const yPedida = D(el.y), foY = Math.max(0, yPedida - QR_DESFASE);
+        if (yPedida < QR_DESFASE) doc.diag.push({ ln: el.ln, tipo: "wrn", msg: `La impresora no puede poner un QR a menos de ${(QR_DESFASE * 25.4 / doc.dpi).toFixed(1)} mm del borde superior; quedará un poco más abajo.` });
+        Object.assign(it, { tipo: "qr", q, n, mag, nivel, x, y: foY + QR_DESFASE, foY, s, bw: s, bh: s });
+      }
+      if (it.x + it.bw > W + 1 || it.y + it.bh > H + 1 || it.x < 0 || it.y < 0)
+        doc.diag.push({ ln: el.ln, tipo: "wrn", msg: "El elemento se sale de la etiqueta y quedará cortado." });
+      items.push(it);
+    } catch (e) {
+      doc.diag.push({ ln: el.ln, tipo: "err", msg: e instanceof ErrNova ? e.message : "Error interno: " + e.message });
+      if (!(e instanceof ErrNova)) console.error(e);
+    }
+  }
+  return { W, H, items };
+}
+
+const QR_DESFASE = 9;
+function fuenteEtiqueta(h) { return `700 ${h}px "Roboto Condensed", "Arial Narrow", sans-serif`; }
+// Fuentes libres (licencia OFL). Todas salvo «zebra» se envían a ZPL como imagen (^GFA).
+const FUENTES = {
+  zebra:     { fam: null, nombre: "Fuente 0 de la impresora" },
+  legible:   { fam: '"Atkinson Hyperlegible", sans-serif', nombre: "Atkinson Hyperlegible", n: 400, b: 700 },
+  moderna:   { fam: '"IBM Plex Sans", sans-serif', nombre: "IBM Plex Sans", n: 500, b: 700 },
+  futurista: { fam: '"Exo 2", sans-serif', nombre: "Exo 2", n: 400, b: 700 },
+  mono:      { fam: '"JetBrains Mono", monospace', nombre: "JetBrains Mono", n: 400, b: 700 },
+  redonda:   { fam: '"Nunito", sans-serif', nombre: "Nunito", n: 400, b: 800 },
+  clasica:   { fam: '"Merriweather", Georgia, serif', nombre: "Merriweather", n: 400, b: 700 },
+  condensada:{ fam: '"Barlow Condensed", "Arial Narrow", sans-serif', nombre: "Barlow Condensed", n: 500, b: 700 },
+  manuscrita:{ fam: '"Caveat", cursive', nombre: "Caveat", n: 500, b: 700 },
+  digital:   { fam: '"Orbitron", sans-serif', nombre: "Orbitron", n: 500, b: 800 }
+};
+// Fuentes residentes de Zebra (alto × ancho de celda y separación, en puntos a 203 ppp).
+// A–H son de mapa de bits y crecen en múltiplos enteros. P–V son versiones fijas de la fuente 0.
+const ZBITMAP = {
+  A: { h: 9,  w: 5,  g: 1, desc: "pequeña 9×5" },
+  B: { h: 11, w: 7,  g: 2, desc: "11×7, solo mayúsculas", mayus: true },
+  C: { h: 18, w: 10, g: 2, desc: "18×10" },
+  D: { h: 18, w: 10, g: 2, desc: "18×10" },
+  E: { h: 28, w: 15, g: 5, desc: "OCR-B 28×15", h300: 42, w300: 20, g300: 6 },
+  F: { h: 26, w: 13, g: 3, desc: "26×13" },
+  G: { h: 60, w: 40, g: 8, desc: "grande 60×40" },
+  H: { h: 21, w: 13, g: 6, desc: "OCR-A 21×13, solo mayúsculas", mayus: true, h300: 34, w300: 22, g300: 9 },
+  P: { h: 20, w: 18, fijo: true }, Q: { h: 28, w: 24, fijo: true }, R: { h: 35, w: 31, fijo: true },
+  S: { h: 40, w: 35, fijo: true }, T: { h: 48, w: 42, fijo: true }, U: { h: 59, w: 53, fijo: true }, V: { h: 80, w: 71, fijo: true }
+};
+function leerFuente(raw) {
+  const r = raw.replace(/"/g, "");
+  const n = norm(r);
+  if (n === "zebra" || n === "zebra/0") return { k: "zebra", id: "0" };
+  if (n.startsWith("zebra/")) {
+    const id = r.slice(6);
+    const up = id.toUpperCase();
+    if (ZBITMAP[up]) return { k: "zbit", id: up };
+    if (/^[REBA]:[A-Z0-9_\-.]+\.(TTF|FNT|TTE)$/i.test(id)) return { k: "zfile", file: up };
+    throw new ErrNova(`No conozco la fuente zebra/${id}. Usa zebra/0, zebra/A … zebra/H, zebra/P … zebra/V o un archivo instalado como zebra/E:TT0003M_.TTF`);
+  }
+  if (FUENTES[n] && FUENTES[n].fam) return { k: "libre", id: n };
+  const libres = Object.keys(FUENTES);
+  throw new ErrNova(`Fuente desconocida «${r}». Elige: ${libres.join(", ")}, o una de la impresora con zebra/LETRA.${sugerir(n, libres)}`);
+}
+function fuenteCss(desc, h, bold) {
+  if (desc.k === "libre") { const f = FUENTES[desc.id]; return `${bold ? f.b : f.n} ${h}px ${f.fam}`; }
+  if (desc.k === "zbit" && !ZBITMAP[desc.id].fijo) return `600 ${h}px "JetBrains Mono", "Courier New", monospace`;
+  if (desc.k === "zfile") return `${bold ? 700 : 400} ${h}px Arial, "Helvetica Neue", sans-serif`;
+  return fuenteEtiqueta(h);
+}
+// La fuente 0 de Zebra es más angosta que Roboto Condensed: calibrado contra Labelary.
+const ANCHO_F0 = 0.8;
+
+function partir(medir, texto, ancho, maxL) {
+  const palabras = texto.split(/\s+/);
+  const out = [];
+  let cur = "";
+  for (const p of palabras) {
+    const prueba = cur ? cur + " " + p : p;
+    if (medir(prueba) <= ancho || !cur) cur = prueba;
+    else { out.push(cur); cur = p; }
+  }
+  if (cur) out.push(cur);
+  if (out.length > maxL) { const resto = out.slice(maxL - 1).join(" "); out.length = maxL - 1; out.push(resto); }
+  return out;
+}
+
+/* ================== Dibujo ================== */
+function dibujar(cv, comp, k, termico) {
+  const { W, H, items } = comp;
+  cv.width = Math.round(W * k); cv.height = Math.round(H * k);
+  cv.classList.toggle("termico", termico);
+  const c = cv.getContext("2d");
+  c.setTransform(k, 0, 0, k, 0, 0);
+  c.fillStyle = "#fbfaf6"; c.fillRect(0, 0, W, H);
+  const tinta = "#16181a";
+  const solape = termico ? 0 : 0.6 / k; // evita costuras entre módulos al escalar
+
+  for (const it of items) {
+    c.save();
+    c.fillStyle = tinta; c.strokeStyle = tinta;
+    if (it.tipo === "caja") {
+      if (it.relleno) { redondo(c, it.x, it.y, it.w, it.h, radioPx(it)); c.fill(); }
+      else {
+        redondo(c, it.x, it.y, it.w, it.h, radioPx(it));
+        redondo(c, it.x + it.t, it.y + it.t, it.w - 2 * it.t, it.h - 2 * it.t, Math.max(0, radioPx(it) - it.t), true);
+        c.fill("evenodd");
+      }
+    } else if (it.tipo === "circulo") {
+      const r = it.d / 2;
+      c.beginPath(); c.arc(it.x + r, it.y + r, r, 0, Math.PI * 2);
+      if (!it.relleno) c.arc(it.x + r, it.y + r, Math.max(0, r - it.t), 0, Math.PI * 2, true);
+      c.fill();
+    } else if (it.tipo === "linea") {
+      if (it.modo === "h") c.fillRect(it.x, it.y, it.dx || it.t, it.t);
+      else if (it.modo === "v") c.fillRect(it.x, it.y, it.t, it.dy || it.t);
+      else if (it.modo === "escalera") it.segs.forEach(([sx, sy, sw, sh]) => c.fillRect(sx, sy, sw, sh));
+      else {
+        // ^GD: paralelogramo con grosor horizontal
+        c.beginPath();
+        if (it.caida) { c.moveTo(it.x, it.y); c.lineTo(it.x + it.t, it.y); c.lineTo(it.x + it.dx, it.y + it.dy); c.lineTo(it.x + it.dx - it.t, it.y + it.dy); }
+        else { c.moveTo(it.x, it.y + it.dy); c.lineTo(it.x + it.t, it.y + it.dy); c.lineTo(it.x + it.dx, it.y); c.lineTo(it.x + it.dx - it.t, it.y); }
+        c.closePath(); c.fill();
+      }
+    } else if (it.tipo === "texto") {
+      dibujarTexto(c, it);
+    } else if (it.tipo === "barras") {
+      for (let i = 0; i < it.bits.length; i++) if (it.bits[i] === "1") c.fillRect(it.x + i * it.m, it.y, it.m, it.h);
+      if (it.legible) {
+        const th = it.textoH;
+        c.font = `500 ${th}px "Roboto Condensed", "Arial Narrow", sans-serif`;
+        c.textAlign = "center"; c.textBaseline = "top";
+        const t = it.ztipo === "code39" ? `*${it.data}*` : it.data;
+        c.fillText(t, it.x + it.w / 2, it.y + it.h + Math.round(it.m * 2));
+      }
+    } else if (it.tipo === "qr") {
+      for (let r = 0; r < it.n; r++) for (let k = 0; k < it.n; k++)
+        if (it.q.isDark(r, k)) c.fillRect(it.x + k * it.mag, it.y + r * it.mag, it.mag + solape, it.mag + solape);
+    }
+    c.restore();
+  }
+  if (!termico) return;
+  // Umbral 1 bit: simula impresión térmica punto por punto
+  const img = c.getImageData(0, 0, cv.width, cv.height), d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const v = (d[i] + d[i + 1] + d[i + 2]) / 3 < 150 ? 22 : 251;
+    d[i] = v; d[i + 1] = v + (v > 200 ? -1 : 2); d[i + 2] = v + (v > 200 ? -5 : 4);
+  }
+  c.putImageData(img, 0, 0);
+}
+function radioPx(it) { return it.r ? (it.r / 8) * (Math.min(it.w, it.h) / 2) : 0; }
+function redondo(c, x, y, w, h, r, seguir) {
+  if (!seguir) c.beginPath();
+  if (w <= 0 || h <= 0) return;
+  if (c.roundRect) c.roundRect(x, y, w, h, r); else c.rect(x, y, w, h);
+}
+function dibujarTexto(c, it) {
+  c.font = it.css;
+  c.textBaseline = "top";
+  c.translate(it.x, it.y);
+  if (it.rot === "90") { c.translate(it.hh, 0); c.rotate(Math.PI / 2); }
+  else if (it.rot === "180") { c.translate(it.w, it.hh); c.rotate(Math.PI); }
+  else if (it.rot === "270") { c.translate(0, it.w); c.rotate(-Math.PI / 2); }
+  c.scale(it.sx, 1);
+  const anchoU = it.anchoD != null ? it.anchoD / it.sx : null;
+  const pasadas = it.zebra && it.bold && !it.blanco ? [0, Math.max(1, Math.round(it.h / 28))] : [0];
+  if (it.blanco) {
+    // ^FR invierte lo que haya debajo: lo emulamos con composición "difference"
+    c.globalCompositeOperation = "difference";
+    c.fillStyle = "#ffffff";
+  }
+  if (it.adv) {
+    // Fuentes de mapa de bits de Zebra: cada carácter ocupa una celda fija
+    c.scale(1 / it.sx, 1);
+    const advU = it.adv;
+    it.lines.forEach((ln, i) => {
+      const lw = ln.length * advU;
+      let dx = 0;
+      if (it.anchoD != null) { if (it.just === "C") dx = (it.anchoD - lw) / 2; else if (it.just === "R") dx = it.anchoD - lw; }
+      [...ln].forEach((ch, j) => {
+        c.save();
+        c.translate(dx + j * advU, i * it.h);
+        c.scale(it.sx, 1);
+        for (const o of pasadas) c.fillText(ch, o / it.sx, 0);
+        c.restore();
+      });
+    });
+    return;
+  }
+  it.lines.forEach((ln, i) => {
+    const lw = c.measureText(ln).width;
+    let dx = 0;
+    if (anchoU != null) {
+      if (it.just === "C") dx = (anchoU - lw) / 2;
+      else if (it.just === "R") dx = anchoU - lw;
+    }
+    const ty = i * it.h + Math.round(it.h * 0.04);
+    if (it.just === "J" && i < it.lines.length - 1 && it.anchoD != null) {
+      const ws = ln.split(" ");
+      const libre = anchoU - ws.reduce((s, w) => s + c.measureText(w).width, 0);
+      let px = 0;
+      ws.forEach(w => { for (const o of pasadas) c.fillText(w, px + o, ty); px += c.measureText(w).width + libre / Math.max(1, ws.length - 1); });
+    } else for (const o of pasadas) c.fillText(ln, dx + o, ty);
+  });
+}
+
+/* ================== ZPL ================== */
+function zplCampo(s) {
+  if (/[\^~_]/.test(s)) return { fh: "^FH_", d: s.replace(/_/g, "_5F").replace(/\^/g, "_5E").replace(/~/g, "_7E") };
+  return { fh: "", d: s };
+}
+function aZPL(doc, comp) {
+  const L = [];
+  L.push("^XA", "^CI28", `^PW${comp.W}`, `^LL${comp.H}`, "^LH0,0");
+  for (const it of comp.items) {
+    L.push(`^FX linea ${it.ln}: ${it.el.cmd}`);
+    if (it.tipo === "texto" && !it.zebra) {
+      const g = rasterTexto(it);
+      L.push(`^FO${Math.max(0, it.x - g.ox)},${Math.max(0, it.y - g.oy)}${it.blanco ? "^FR" : ""}^GFA,${g.total},${g.total},${g.bpr},${g.datos}^FS`);
+    } else if (it.tipo === "texto") {
+      const o = { "0": "N", "90": "R", "180": "I", "270": "B" }[it.rot];
+      // ^FR invierte: dos pasadas se anularían, así que el texto blanco va en una sola
+      const pasadas = it.bold && !it.blanco ? [0, Math.max(1, Math.round(it.h / 28))] : [0];
+      const { fh, d } = zplCampo(it.lines.length > 1 && it.anchoD == null ? it.lines.join(" ") : it.lines.join(" "));
+      for (const off of pasadas) {
+        const ox = (o === "N" || o === "I") ? off : 0, oy = (o === "R" || o === "B") ? off : 0;
+        const fb = it.anchoD != null ? `^FB${it.anchoD},${it.lines.length},0,${it.just}` : "";
+        let fuenteZ;
+        if (it.fuente.k === "zbit") fuenteZ = `^A${it.zid}${o},${it.h},${it.fw}`;
+        else if (it.fuente.k === "zfile") fuenteZ = `^A@${o},${it.h},${it.fw},${it.fuente.file}`;
+        else fuenteZ = `^A0${o},${it.h},${it.fw}`;
+        L.push(`^FO${it.x + ox},${it.y + oy}${fuenteZ}${fb}${it.blanco ? "^FR" : ""}${fh}^FD${d}^FS`);
+      }
+    } else if (it.tipo === "caja") {
+      L.push(`^FO${it.x},${it.y}^GB${it.w},${it.h},${it.t},B,${it.r}^FS`);
+    } else if (it.tipo === "circulo") {
+      L.push(`^FO${it.x},${it.y}^GC${it.d},${it.t},B^FS`);
+    } else if (it.tipo === "linea") {
+      if (it.modo === "h") L.push(`^FO${it.x},${it.y}^GB${Math.max(it.dx, it.t)},${it.t},${it.t},B,0^FS`);
+      else if (it.modo === "v") L.push(`^FO${it.x},${it.y}^GB${it.t},${Math.max(it.dy, it.t)},${it.t},B,0^FS`);
+      else if (it.modo === "escalera") it.segs.forEach(([sx, sy, sw, sh]) => L.push(`^FO${sx},${sy}^GB${sw},${sh},${Math.min(sw, sh)},B,0^FS`));
+      else L.push(`^FO${it.x},${it.y}^GD${it.dx},${it.dy},${it.t},B,${it.caida ? "L" : "R"}^FS`);
+    } else if (it.tipo === "barras") {
+      const yn = it.legible ? "Y" : "N";
+      const { fh, d } = zplCampo(it.zdata);
+      let cmd;
+      if (it.ztipo === "code128") cmd = `^BCN,${it.h},${yn},N,N`;
+      else if (it.ztipo === "code39") cmd = `^B3N,N,${it.h},${yn},N`;
+      else cmd = `^BEN,${it.h},${yn},N`;
+      L.push(`^BY${it.m},3.0,${it.h}`, `^FO${it.x},${it.y}${cmd}${fh}^FD${d}^FS`);
+    } else if (it.tipo === "qr") {
+      const { fh, d } = zplCampo(it.el.valor);
+      L.push("^BY2,3.0,10", `^FO${it.x},${it.foY}^BQN,2,${it.mag}${fh}^FD${it.nivel}A,${d}^FS`);
+    }
+  }
+  if (doc.copias > 1) L.push(`^PQ${doc.copias}`);
+  L.push("^XZ");
+  return L.join("\n");
+}
+// Dibuja el texto a la resolución de la impresora y lo convierte en un gráfico de 1 bit.
+function rasterTexto(it) {
+  const extra = Math.ceil(it.h * 0.25); // espacio para descendentes (g, p, j)
+  const sw = it.rot === "90" || it.rot === "270";
+  const W = Math.max(1, Math.ceil(it.bw + (sw ? extra : 0))), H = Math.max(1, Math.ceil(it.bh + (sw ? 0 : extra)));
+  const cv2 = document.createElement("canvas");
+  cv2.width = W; cv2.height = H;
+  const c = cv2.getContext("2d");
+  c.fillStyle = "#fff"; c.fillRect(0, 0, W, H);
+  c.fillStyle = "#000";
+  // con giro de 90°, el desplazamiento usa el alto total del bloque
+  dibujarTexto(c, Object.assign({}, it, { x: it.rot === "90" ? extra : 0, y: it.rot === "180" ? extra : 0, blanco: false }));
+  const px = c.getImageData(0, 0, W, H).data;
+  const bpr = Math.ceil(W / 8);
+  let filas = [], ultimaFila = null;
+  for (let y = 0; y < H; y++) {
+    let hex = "";
+    for (let b = 0; b < bpr; b++) {
+      let byte = 0;
+      for (let k = 0; k < 8; k++) {
+        const x = b * 8 + k;
+        if (x < W) { const i = (y * W + x) * 4; if (px[i] < 128) byte |= 0x80 >> k; }
+      }
+      hex += byte.toString(16).toUpperCase().padStart(2, "0");
+    }
+    filas.push(hex === ultimaFila ? ":" : comprimirFila(hex));
+    ultimaFila = hex;
+  }
+  return { total: bpr * H, bpr, datos: filas.join(""), ox: it.rot === "90" ? extra : 0, oy: it.rot === "180" ? extra : 0, W, H, px };
+}
+// Compresión ASCII de Zebra: G–Y = 1–19 repeticiones, g–z = 20–400, «,» = ceros hasta el final de la fila.
+function comprimirFila(hex) {
+  let fin = hex.length;
+  while (fin > 0 && hex[fin - 1] === "0") fin--;
+  let out = "";
+  for (let i = 0; i < fin;) {
+    let j = i;
+    while (j < fin && hex[j] === hex[i]) j++;
+    let n = j - i;
+    if (n === 1) out += hex[i];
+    else {
+      while (n > 0) {
+        const parte = Math.min(n, 419);
+        const altos = Math.floor(parte / 20), bajos = parte % 20;
+        out += (altos ? String.fromCharCode(102 + altos) : "") + (bajos ? String.fromCharCode(70 + bajos) : "") + hex[i];
+        n -= parte;
+      }
+    }
+    i = j;
+  }
+  return fin < hex.length ? out + "," : out;
+}
+function zplHtml(z) {
+  return z.split("\n").map(l => {
+    if (l.startsWith("^FX")) return `<span class="tk-com">${esc(l)}</span>`;
+    if (l.includes("^GFA,") && l.length > 160) l = l.slice(0, 140) + " … (" + l.length + " caracteres)^FS";
+    return esc(l).replace(/(\^FD)(.*?)(\^FS)/g, (_, a, b, c2) => `${a}\u0000${b}\u0001${c2}`)
+      .replace(/([\^~][A-Z0-9@]{1,2})/g, '<span class="z-cmd">$1</span>')
+      .replace(/\u0000(.*?)\u0001/g, '<span class="z-fd">$1</span>');
+  }).join("\n");
+}
+
+/* ================== Resaltado del editor ================== */
+const TODAS_PROPS = new Set(Object.values(PROPS).flatMap(o => Object.keys(o)).concat(Object.keys(PROP_ALIAS), ["a", "centro", "izquierda", "derecha", "code128", "code39", "ean13"], Object.keys(FUENTES)));
+function resaltar(codigo) {
+  return codigo.split("\n").map(linea => {
+    const toks = tokenizar(linea);
+    let out = "", pos = 0, first = true;
+    const reales = toks.filter(t => t.t !== "com");
+    const ultimo = reales.length > 1 ? reales[reales.length - 1] : null;
+    for (const t of toks) {
+      out += esc(linea.slice(pos, t.s));
+      const raw = linea.slice(t.s, t.t === "com" ? undefined : t.s + t.v.length);
+      let cls = "";
+      if (t.t === "com") cls = "tk-com";
+      else if (t.t === "str") cls = "tk-str";
+      else if (t.t === "@") cls = "tk-at";
+      else if (t.t === "word") {
+        const n = norm(t.v);
+        if (first && (ORDENES.includes(n) || ALIAS[n])) cls = "tk-cmd";
+        else if (t === ultimo && n === "po") cls = "tk-po";
+        else if (/^-?\d/.test(t.v)) cls = "tk-num";
+        else if (TODAS_PROPS.has(n) || n.startsWith("zebra/")) cls = "tk-prop";
+        else cls = "tk-var";
+      }
+      let h = esc(raw);
+      if (t.t === "str") h = h.replace(/\{[^{}]+\}/g, m => `<span class="tk-var">${m}</span>`);
+      out += cls ? `<span class="${cls}">${h}</span>` : h;
+      pos = t.s + raw.length;
+      if (t.t !== "com") first = false;
+    }
+    return out + esc(linea.slice(pos));
+  }).join("\n") + "\n ";
+}
+
+/* ================== Aplicación ================== */
+const src = $("src"), hl = $("hl"), gutter = $("gutter"), cv = $("cv");
+const medidor = document.createElement("canvas").getContext("2d");
+let ultimo = null, zplActual = "";
+
+function lineaCursor() { return src.value.slice(0, src.selectionStart).split("\n").length; }
+
+function actualizar() {
+  const codigo = src.value;
+  hl.innerHTML = resaltar(codigo);
+  const doc = analizar(codigo);
+  const comp = compilar(doc, medidor);
+  ultimo = { doc, comp };
+  zplActual = aZPL(doc, comp);
+  $("zpl").innerHTML = zplHtml(zplActual);
+
+  // Diagnóstico
+  const errs = doc.diag.filter(d => d.tipo === "err").length, wrns = doc.diag.length - errs;
+  const dg = $("diag");
+  if (!doc.diag.length) dg.innerHTML = `<div class="diag-row"><span class="chip ok">ok</span><span>Sin errores. ${comp.items.length} elementos listos para imprimir.</span></div>`;
+  else dg.innerHTML = doc.diag.sort((a, b) => a.ln - b.ln).map(d =>
+    `<div class="diag-row" data-ln="${d.ln}"><span class="chip ${d.tipo}">${d.tipo === "err" ? "error" : "aviso"}</span><span class="ln">L${d.ln}</span><span>${esc(d.msg)}</span></div>`).join("");
+  $("estadoGeneral").innerHTML = errs ? `<span class="chip err">${errs} ${errs === 1 ? "error" : "errores"}</span>` : wrns ? `<span class="chip wrn">${wrns} ${wrns === 1 ? "aviso" : "avisos"}</span>` : `<span class="chip ok">compila</span>`;
+
+  // Numeración
+  const nl = codigo.split("\n").length;
+  const marcas = {};
+  doc.diag.forEach(d => { if (marcas[d.ln] !== "bad") marcas[d.ln] = d.tipo === "err" ? "bad" : "wrn"; });
+  const cur = lineaCursor();
+  let g = "";
+  for (let i = 1; i <= nl; i++) g += `<div class="${i === cur ? "cur " : ""}${marcas[i] || ""}">${i}</div>`;
+  gutter.innerHTML = g + "<div>&nbsp;</div>";
+
+  $("tam").textContent = `${doc.ancho} × ${doc.alto} mm · ${comp.W} × ${comp.H} pt`;
+  $("dpiInfo").textContent = `${doc.dpi} ppp${doc.copias > 1 ? ` · ${doc.copias} copias` : ""}`;
+  $("nEl").textContent = comp.items.length;
+  $("dims").textContent = `${doc.ancho} × ${doc.alto} mm`;
+  aplicarZoom();
+  marcarSeleccion();
+  try { localStorage.setItem("nova-borrador", codigo); } catch (e) {}
+}
+
+function escala() {
+  if (!ultimo) return 1;
+  const stage = $("stage");
+  const disp = Math.max(200, stage.clientWidth - 64);
+  const base = Math.min(1, disp / ultimo.comp.W) * (ultimo.comp.W < 500 ? Math.min(2, 500 / ultimo.comp.W) : 1);
+  return base * parseFloat($("zoom").value);
+}
+function aplicarZoom() {
+  if (!ultimo) return;
+  const s = escala();
+  cv.style.width = Math.round(ultimo.comp.W * s) + "px";
+  cv.style.height = Math.round(ultimo.comp.H * s) + "px";
+  const termico = $("termico").checked;
+  // Nítido: se dibuja a la resolución de la pantalla. Térmico: un píxel por punto de impresora.
+  let k = termico ? 1 : s * (window.devicePixelRatio || 1);
+  k = Math.max(0.25, Math.min(k, 6000 / ultimo.comp.W, 6000 / ultimo.comp.H));
+  dibujar(cv, ultimo.comp, k, termico);
+  marcarSeleccion();
+}
+function marcarSeleccion() {
+  const box = $("hlBox");
+  if (!ultimo) return;
+  const ln = lineaCursor();
+  const it = ultimo.comp.items.find(i => i.ln === ln);
+  [...gutter.children].forEach((d, i) => d.classList.toggle("cur", i + 1 === ln));
+  if (!it) { box.style.display = "none"; return; }
+  const s = escala(), pad = 3;
+  box.style.display = "block";
+  box.style.left = (it.x * s - pad) + "px";
+  box.style.top = (it.y * s - pad) + "px";
+  box.style.width = (Math.max(2, it.bw) * s + pad * 2) + "px";
+  box.style.height = (Math.max(2, it.bh) * s + pad * 2) + "px";
+}
+
+// Eventos del editor
+let timer = null;
+src.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(actualizar, 90); hl.innerHTML = resaltar(src.value); });
+src.addEventListener("scroll", () => { hl.scrollTop = src.scrollTop; hl.scrollLeft = src.scrollLeft; gutter.scrollTop = src.scrollTop; });
+["keyup", "click", "select"].forEach(ev => src.addEventListener(ev, marcarSeleccion));
+src.addEventListener("keydown", e => {
+  if (e.key === "Tab") {
+    e.preventDefault();
+    const a = src.selectionStart, b = src.selectionEnd;
+    src.value = src.value.slice(0, a) + "  " + src.value.slice(b);
+    src.selectionStart = src.selectionEnd = a + 2;
+    src.dispatchEvent(new Event("input"));
+  }
+});
+$("diag").addEventListener("click", e => {
+  const row = e.target.closest("[data-ln]");
+  if (!row) return;
+  const ln = +row.dataset.ln, lines = src.value.split("\n");
+  const pos = lines.slice(0, ln - 1).reduce((s, l) => s + l.length + 1, 0);
+  src.focus(); src.setSelectionRange(pos, pos + (lines[ln - 1] || "").length);
+  marcarSeleccion();
+});
+
+// Coordenadas bajo el puntero
+cv.addEventListener("mousemove", e => {
+  if (!ultimo) return;
+  const r = cv.getBoundingClientRect();
+  const kx = ultimo.doc.ancho / r.width, ky = ultimo.doc.alto / r.height;
+  $("pos").textContent = `x ${((e.clientX - r.left) * kx).toFixed(1)} · y ${((e.clientY - r.top) * ky).toFixed(1)} mm`;
+});
+cv.addEventListener("mouseleave", () => { $("pos").textContent = "–"; });
+cv.addEventListener("click", e => {
+  // Clic en la etiqueta: lleva el cursor a la línea del elemento
+  if (!ultimo) return;
+  const r = cv.getBoundingClientRect(), s = r.width / ultimo.comp.W;
+  const px = (e.clientX - r.left) / s, py = (e.clientY - r.top) / s;
+  const hit = [...ultimo.comp.items].reverse().find(i => px >= i.x - 4 && px <= i.x + i.bw + 4 && py >= i.y - 4 && py <= i.y + i.bh + 4);
+  if (!hit) return;
+  const lines = src.value.split("\n");
+  const pos = lines.slice(0, hit.ln - 1).reduce((sum, l) => sum + l.length + 1, 0);
+  src.focus(); src.setSelectionRange(pos, pos + lines[hit.ln - 1].length);
+  marcarSeleccion();
+});
+$("zoom").addEventListener("input", aplicarZoom);
+$("termico").addEventListener("change", aplicarZoom);
+window.addEventListener("resize", aplicarZoom);
+
+// Pestañas
+document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () => {
+  document.querySelectorAll(".tab").forEach(o => o.setAttribute("aria-selected", String(o === t)));
+  document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === "view-" + t.dataset.view));
+  if (t.dataset.view === "vista") aplicarZoom();
+}));
+
+// Ejemplos
+$("ejemplos").addEventListener("change", e => {
+  src.value = EJEMPLOS[e.target.value];
+  $("nombreArchivo").textContent = e.target.value + ".weno";
+  src.scrollTop = 0;
+  actualizar();
+});
+
+// Copiar
+function aviso(t) { const el = $("toast"); el.textContent = t; el.classList.add("on"); setTimeout(() => el.classList.remove("on"), 1800); }
+async function copiar(texto, ok) {
+  try { await navigator.clipboard.writeText(texto); aviso(ok); }
+  catch (e) {
+    const ta = document.createElement("textarea"); ta.value = texto; document.body.appendChild(ta); ta.select();
+    let bien = false; try { bien = document.execCommand("copy"); } catch (_) {}
+    ta.remove(); aviso(bien ? ok : "No se pudo copiar. Selecciona el texto y usa Ctrl+C.");
+  }
+}
+$("copiarZpl").addEventListener("click", () => copiar(zplActual, "ZPL copiado. Pégalo en tu impresora o en Labelary."));
+$("copiarNova").addEventListener("click", () => copiar(src.value, "Código WENO copiado."));
+
+// Inicio
+let inicial = EJEMPLOS.envio;
+try { const g = localStorage.getItem("nova-borrador"); if (g && g.trim()) { inicial = g; $("nombreArchivo").textContent = "borrador.weno"; } } catch (e) {}
+src.value = inicial;
+actualizar();
+if (document.fonts && document.fonts.load) {
+  const cargas = ['700 20px "Roboto Condensed"', '500 20px "Roboto Condensed"'];
+  for (const f of Object.values(FUENTES)) if (f.fam) cargas.push(`${f.n} 20px ${f.fam}`, `${f.b} 20px ${f.fam}`);
+  Promise.all(cargas.map(f => document.fonts.load(f).catch(() => null))).then(actualizar, () => {});
+}
+</script>
+</body>
+</html>
