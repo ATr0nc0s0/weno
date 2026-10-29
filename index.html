@@ -144,6 +144,25 @@ main {
   resize: none;
   outline: none;
 }
+/* Biblioteca de imágenes */
+.img-wrap { position: relative; }
+.panel-img {
+  position: absolute; right: 0; top: calc(100% + 8px); z-index: 30;
+  width: min(380px, 90vw); max-height: 70vh; overflow: auto;
+  background: var(--raise); border: 1px solid var(--line); border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0,0,0,.55); padding: 12px;
+}
+.panel-img[hidden] { display: none; }
+.panel-img-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.panel-img-nota { color: var(--muted); font-size: 12.5px; margin: 8px 0 10px; }
+.img-fila { display: grid; grid-template-columns: 48px 1fr auto auto; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+.img-fila img { width: 48px; height: 48px; object-fit: contain; background: var(--paper); border-radius: 4px; }
+.img-info { display: flex; flex-direction: column; min-width: 0; }
+.img-info b { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
+.img-info span { color: var(--muted); font-size: 12px; }
+.editor.soltar { outline: 2px dashed var(--accent); outline-offset: -6px; }
+label.btn { display: inline-flex; align-items: center; }
+
 /* Sugerencias y ayuda */
 .sug {
   position: absolute;
@@ -371,6 +390,18 @@ main {
         <option value="serie4419">RFID 44 × 19 correlativo</option>
       </select>
     </label>
+    <div class="img-wrap">
+      <button id="btnImagenes" class="btn" type="button" aria-expanded="false" aria-controls="panelImg">Imágenes</button>
+      <div class="panel-img" id="panelImg" hidden>
+        <div class="panel-img-cab">
+          <b>Imágenes</b>
+          <label class="btn primary mini" for="imgArchivo">Subir imagen</label>
+          <input id="imgArchivo" type="file" accept="image/*" multiple hidden>
+        </div>
+        <p class="panel-img-nota">También puedes arrastrar una imagen al editor. Se guardan en este navegador. Para logos usa PNG o SVG con fondo blanco o transparente.</p>
+        <div id="imgLista"></div>
+      </div>
+    </div>
     <button id="copiarNova" class="btn" type="button">Copiar código WENO</button>
     <button id="copiarZpl" class="btn primary" type="button">Copiar ZPL</button>
   </div>
@@ -459,6 +490,7 @@ main {
           <tr><td><code>linea</code></td><td><code>a x,y</code> punto final · <code>grosor</code> (0.3). Horizontal, vertical o diagonal.</td><td><code>linea @ 2,20 a 98,20 grosor 0.4</code></td></tr>
           <tr><td><code>circulo</code></td><td><code>diam</code> diámetro · <code>borde</code> · <code>relleno</code></td><td><code>circulo @ 80,5 diam 12 relleno</code></td></tr>
           <tr><td><code>barras</code></td><td><code>tipo</code> code128 / code39 / ean13 · <code>alto</code> (12) · <code>modulo</code> barra fina en mm (0.25) · <code>sintexto</code></td><td><code>barras "ABC-123" @ 5,30 alto 15</code></td></tr>
+          <tr><td><code>imagen</code></td><td>Pone una imagen de la biblioteca (botón «Imágenes» o arrastrándola al editor). <code>ancho</code> o <code>alto</code> en mm (el otro se ajusta solo; 20 mm de ancho por defecto) · <code>umbral</code> 1-99 (50) · <code>tramado</code> para fotos · <code>invertir</code></td><td><code>imagen "weno" @ 5,5 ancho 15</code></td></tr>
           <tr><td><code>rfid</code></td><td>Graba el chip de una etiqueta RFID (no se dibuja). <code>formato</code> hex / texto · <code>banco</code> epc / usuario · <code>bloquear clave "1234ABCD"</code> o <code>bloquear permanente</code> · <code>intentos</code> etiquetas a probar si falla (3). No lleva <code>@</code>.</td><td><code>rfid "3034257BF7194E4000001A85"</code></td></tr>
           <tr><td><code>qr</code></td><td><code>tam</code> lado aproximado (20) · <code>nivel</code> L / M / Q / H</td><td><code>qr "https://mi.sitio" @ 70,30 tam 25</code></td></tr>
         </table></div>
@@ -482,6 +514,9 @@ main {
           <tr><td><code>zebra/E:ARCHIVO.TTF</code></td><td>Cualquier fuente instalada en la impresora (ej. <code>zebra/E:TT0003M_.TTF</code>, Swiss 721)</td><td>Usa <code>^A@</code>; vista previa aproximada</td></tr>
         </table></div>
 
+        <h2>Imágenes</h2>
+        <p>Las impresoras térmicas solo imprimen negro. WENO convierte la imagen en puntos negros al tamaño exacto de tu impresora. Para logos y dibujos funciona bien tal cual; si queda muy clara o muy oscura, ajusta <code>umbral</code>. Para fotos usa <code>tramado</code>, que simula grises con puntitos. Las imágenes subidas quedan guardadas en este navegador: si compartes tu código <code>.weno</code>, comparte también la imagen con el mismo nombre.</p>
+
         <h2>RFID</h2>
         <p>Necesitas una impresora Zebra con RFID (por ejemplo las series ZT400R, ZT600R o ZD500R/ZD621R) y haber calibrado el RFID una vez desde la impresora. Por defecto <code>rfid</code> escribe el EPC en hex; el EPC más común mide 96 bits (24 caracteres). Si la grabación falla, la impresora marca la etiqueta con VOID y prueba con la siguiente. Para proteger el dato hay dos formas: <code>bloquear clave "1234ABCD"</code> lo bloquea con una clave de 8 caracteres hex (se puede desbloquear con esa clave, así que guárdala), y <code>bloquear permanente</code> lo bloquea para siempre. El bloqueo usa <code>^RLM</code>, de las impresoras RFID Link-OS; las impresoras RFID más antiguas usan <code>^RZ</code>. La vista previa y Labelary no simulan la grabación.</p>
 
@@ -503,6 +538,7 @@ main {
           <tr><td><code>circulo</code></td><td><code>^GC</code></td></tr>
           <tr><td><code>barras</code></td><td><code>^BY ^BC</code>, <code>^B3</code>, <code>^BE</code></td></tr>
           <tr><td><code>qr</code></td><td><code>^BQN</code></td></tr>
+          <tr><td><code>imagen</code></td><td><code>^GFA</code> comprimida, en blanco y negro a la resolución de la impresora</td></tr>
           <tr><td><code>rfid</code></td><td><code>^RS8</code> y <code>^RFW</code>; con <code>bloquear</code>, la clave con <code>^RFW,H,P</code> y el bloqueo con <code>^RLM</code></td></tr>
           <tr><td><code>copias</code></td><td><code>^PQ</code></td></tr>
         </table></div>
@@ -677,7 +713,7 @@ function sugerir(w, lista) {
 }
 
 /* ================== Lenguaje ================== */
-const ORDENES = ["etiqueta", "densidad", "copias", "fuente", "var", "texto", "caja", "linea", "circulo", "barras", "qr", "rfid", "serie"];
+const ORDENES = ["etiqueta", "densidad", "copias", "fuente", "var", "texto", "caja", "linea", "circulo", "barras", "qr", "rfid", "serie", "imagen"];
 const ALIAS = { "codigo": "barras", "codigobarras": "barras", "rectangulo": "caja", "cuadro": "caja", "circ": "circulo", "variable": "var", "dpi": "densidad", "txt": "texto" };
 
 // Propiedades por orden: tipo num | int | flag | enum:[...]
@@ -689,6 +725,7 @@ const PROPS = {
   circulo:{ diam: "num", borde: "num", relleno: "flag" },
   barras: { alto: "num", tipo: ["code128", "code39", "ean13"], modulo: "num", sintexto: "flag", sin_texto: "flag" },
   qr:     { tam: "num", nivel: ["l", "m", "q", "h"] },
+  imagen: { ancho: "num", alto: "num", umbral: "num", tramado: "flag", invertir: "flag" },
   rfid:   { formato: ["hex", "texto"], banco: ["epc", "usuario"], bloquear: "flag", clave: "clave", permanente: "flag", intentos: "int" }
 };
 const PROP_ALIAS = { "tamano": "tam", "tamaño": "tam", "size": "tam", "bold": "negrita", "centrado": "centro", "rotar": "girar", "rotacion": "girar", "invertido": "blanco", "grueso": "grosor", "diametro": "diam", "lleno": "relleno", "relleno": "relleno", "redondeo": "radio", "barra": "modulo" };
@@ -844,7 +881,7 @@ function analizar(codigo, indice = 0) {
         [doc.ancho, doc.alto] = dim;
         doc.tieneEtiqueta = true;
       }
-      if (["texto", "barras", "qr", "rfid"].includes(cmd)) {
+      if (["texto", "barras", "qr", "rfid", "imagen"].includes(cmd)) {
         const v = next();
         if (!v || v.t !== "str") throw new ErrNova(`${cmd} necesita su contenido entre comillas, por ejemplo: ${cmd} "ABC" @ 5,5`);
         el.valor = leerCadena(v, vars);
@@ -1068,6 +1105,19 @@ function compilar(doc, ctx) {
         const w = bits.length * m;
         const x = el.x === "centro" ? Math.round((W - w) / 2) : D(el.x);
         Object.assign(it, { tipo: "barras", fmt, ztipo: tipo, zdata, data, bits, m, h, x, y: D(el.y), w, legible, textoH, bw: w, bh: h + (legible ? textoH + Math.round(m * 2) : 0) });
+      } else if (el.cmd === "imagen") {
+        const ref = imagenes[el.valor.toLowerCase()];
+        if (!ref) throw new ErrNova(`No hay ninguna imagen llamada «${el.valor}». Súbela con el botón «Imágenes» o arrástrala al editor.`);
+        if (!ref.img.complete || !ref.img.naturalWidth) throw new ErrNova(`La imagen «${el.valor}» se está cargando…`);
+        const nw = ref.img.naturalWidth, nh = ref.img.naturalHeight;
+        let wmm = el.p.ancho, hmm = el.p.alto;
+        if (!wmm && !hmm) wmm = 20;
+        if (wmm && !hmm) hmm = wmm * nh / nw; else if (hmm && !wmm) wmm = hmm * nw / nh;
+        const w = Math.max(1, D(wmm)), h = Math.max(1, D(hmm));
+        const umbral = Math.max(1, Math.min(99, el.p.umbral ?? 50));
+        const bits = rasterImagen(ref.img, w, h, umbral, !!el.p.tramado, !!el.p.invertir);
+        const x = el.x === "centro" ? Math.round((W - w) / 2) : D(el.x);
+        Object.assign(it, { tipo: "imagen", x, y: D(el.y), w, h, bits, cv: lienzoBits(bits, w, h), bw: w, bh: h });
       } else if (el.cmd === "qr") {
         if (typeof qrcode !== "function") throw new ErrNova("No se pudo cargar el generador de QR (revisa tu conexión).");
         qrcode.stringToBytes = qrcode.stringToBytesFuncs["UTF-8"];
@@ -1213,6 +1263,9 @@ function dibujar(cv, comp, k, termico) {
         const t = it.ztipo === "code39" ? `*${it.data}*` : it.data;
         c.fillText(t, it.x + it.w / 2, it.y + it.h + Math.round(it.m * 2));
       }
+    } else if (it.tipo === "imagen") {
+      c.imageSmoothingEnabled = false;
+      c.drawImage(it.cv, it.x, it.y, it.w, it.h);
     } else if (it.tipo === "qr") {
       for (let r = 0; r < it.n; r++) for (let k = 0; k < it.n; k++)
         if (it.q.isDark(r, k)) c.fillRect(it.x + k * it.mag, it.y + r * it.mag, it.mag + solape, it.mag + solape);
@@ -1333,6 +1386,9 @@ function aZPL(doc, comp, titulo) {
         else fuenteZ = `^A0${o},${it.h},${it.fw}`;
         L.push(`^FO${it.x + ox},${it.y + oy}${fuenteZ}${fb}${it.blanco ? "^FR" : ""}${fh}^FD${d}^FS`);
       }
+    } else if (it.tipo === "imagen") {
+      const g = empaquetar(it.w, it.h, (x, y) => it.bits[y * it.w + x]);
+      L.push(`^FO${it.x},${it.y}^GFA,${g.total},${g.total},${g.bpr},${g.datos}^FS`);
     } else if (it.tipo === "caja") {
       L.push(`^FO${it.x},${it.y}^GB${it.w},${it.h},${it.t},B,${it.r}^FS`);
     } else if (it.tipo === "circulo") {
@@ -1372,22 +1428,60 @@ function rasterTexto(it) {
   // con giro de 90°, el desplazamiento usa el alto total del bloque
   dibujarTexto(c, Object.assign({}, it, { x: it.rot === "90" ? extra : 0, y: it.rot === "180" ? extra : 0, blanco: false }));
   const px = c.getImageData(0, 0, W, H).data;
+  const g = empaquetar(W, H, (x, y) => px[(y * W + x) * 4] < 128);
+  return Object.assign(g, { ox: it.rot === "90" ? extra : 0, oy: it.rot === "180" ? extra : 0, W, H, px });
+}
+// Convierte una matriz de puntos en los datos de ^GFA (1 = punto negro)
+function empaquetar(W, H, negro) {
   const bpr = Math.ceil(W / 8);
-  let filas = [], ultimaFila = null;
+  const filas = [];
+  let ultimaFila = null;
   for (let y = 0; y < H; y++) {
     let hex = "";
     for (let b = 0; b < bpr; b++) {
       let byte = 0;
-      for (let k = 0; k < 8; k++) {
-        const x = b * 8 + k;
-        if (x < W) { const i = (y * W + x) * 4; if (px[i] < 128) byte |= 0x80 >> k; }
-      }
+      for (let k = 0; k < 8; k++) { const x = b * 8 + k; if (x < W && negro(x, y)) byte |= 0x80 >> k; }
       hex += byte.toString(16).toUpperCase().padStart(2, "0");
     }
     filas.push(hex === ultimaFila ? ":" : comprimirFila(hex));
     ultimaFila = hex;
   }
-  return { total: bpr * H, bpr, datos: filas.join(""), ox: it.rot === "90" ? extra : 0, oy: it.rot === "180" ? extra : 0, W, H, px };
+  return { total: bpr * H, bpr, datos: filas.join("") };
+}
+// Imagen a blanco y negro, al tamaño exacto en puntos de la impresora
+function rasterImagen(img, w, h, umbral, tramado, invertir) {
+  const c2 = document.createElement("canvas"); c2.width = w; c2.height = h;
+  const c = c2.getContext("2d");
+  c.fillStyle = "#fff"; c.fillRect(0, 0, w, h);
+  c.imageSmoothingQuality = "high";
+  c.drawImage(img, 0, 0, w, h);
+  const d = c.getImageData(0, 0, w, h).data;
+  const lum = new Float32Array(w * h);
+  for (let i = 0; i < w * h; i++) lum[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+  const corte = 255 * umbral / 100;
+  const bits = new Uint8Array(w * h);
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const i = y * w + x, v = lum[i], negro = v < corte;
+    bits[i] = negro !== invertir ? 1 : 0;
+    if (tramado) {
+      // Floyd–Steinberg: reparte el error para simular grises con puntos
+      const err = v - (negro ? 0 : 255);
+      if (x + 1 < w) lum[i + 1] += err * 7 / 16;
+      if (y + 1 < h) {
+        if (x > 0) lum[i + w - 1] += err * 3 / 16;
+        lum[i + w] += err * 5 / 16;
+        if (x + 1 < w) lum[i + w + 1] += err / 16;
+      }
+    }
+  }
+  return bits;
+}
+function lienzoBits(bits, w, h) {
+  const c2 = document.createElement("canvas"); c2.width = w; c2.height = h;
+  const c = c2.getContext("2d"), im = c.createImageData(w, h);
+  for (let i = 0; i < w * h; i++) if (bits[i]) { im.data[i * 4] = 22; im.data[i * 4 + 1] = 24; im.data[i * 4 + 2] = 26; im.data[i * 4 + 3] = 255; }
+  c.putImageData(im, 0, 0);
+  return c2;
 }
 // Compresión ASCII de Zebra: G–Y = 1–19 repeticiones, g–z = 20–400, «,» = ceros hasta el final de la fila.
 function comprimirFila(hex) {
@@ -1555,6 +1649,91 @@ function marcarSeleccion() {
   box.style.height = (Math.max(2, it.bh) * s + pad * 2) + "px";
 }
 
+/* ================== Biblioteca de imágenes ================== */
+// Las imágenes se guardan en este navegador. La «weno» viene incluida para probar.
+const IMG_INCLUIDAS = {
+  weno: "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200"><text x="0" y="170" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="200">W</text><circle cx="215" cy="160" r="20"/></svg>')
+};
+const imagenes = {};
+function registrarImagen(nombre, srcUrl, propia) {
+  const img = new Image();
+  img.onload = () => { if (typeof actualizar === "function" && src.value) actualizar(); pintarBiblioteca(); };
+  img.src = srcUrl;
+  imagenes[nombre] = { src: srcUrl, img, propia };
+}
+function cargarBiblioteca() {
+  for (const [k, v] of Object.entries(IMG_INCLUIDAS)) registrarImagen(k, v, false);
+  try { const g = JSON.parse(localStorage.getItem("weno-imagenes") || "{}"); for (const [k, v] of Object.entries(g)) registrarImagen(k, v, true); } catch (e) {}
+}
+function guardarBiblioteca() {
+  const o = {};
+  for (const [k, v] of Object.entries(imagenes)) if (v.propia) o[k] = v.src;
+  try { localStorage.setItem("weno-imagenes", JSON.stringify(o)); return true; }
+  catch (e) { aviso("No queda espacio en este navegador para guardar más imágenes. Borra alguna o usa imágenes más chicas."); return false; }
+}
+function nombreLibre(base) {
+  let n = norm(base).replace(/\.[a-z0-9]+$/, "").replace(/[^a-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "imagen";
+  let k = n, i = 2;
+  while (imagenes[k]) k = `${n}-${i++}`;
+  return k;
+}
+function leerArchivoImagen(file) {
+  return new Promise((ok, mal) => {
+    if (!file.type.startsWith("image/")) return mal(new Error("no es imagen"));
+    const fr = new FileReader();
+    fr.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        // Se reduce a 1600 px como máximo para no llenar la memoria del navegador
+        const max = 1600, f = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+        const c2 = document.createElement("canvas");
+        c2.width = Math.max(1, Math.round(img.naturalWidth * f)); c2.height = Math.max(1, Math.round(img.naturalHeight * f));
+        const c = c2.getContext("2d"); c.fillStyle = "#fff"; c.fillRect(0, 0, c2.width, c2.height); c.drawImage(img, 0, 0, c2.width, c2.height);
+        ok(c2.toDataURL("image/png"));
+      };
+      img.onerror = () => mal(new Error("no se pudo leer"));
+      img.src = fr.result;
+    };
+    fr.onerror = () => mal(fr.error);
+    fr.readAsDataURL(file);
+  });
+}
+async function agregarArchivos(files, insertar) {
+  let agregadas = 0;
+  for (const f of files) {
+    try {
+      const url = await leerArchivoImagen(f);
+      const nombre = nombreLibre(f.name);
+      registrarImagen(nombre, url, true);
+      if (!guardarBiblioteca()) { delete imagenes[nombre]; break; }
+      agregadas++;
+      if (insertar) insertarLinea(`imagen "${nombre}" @ 5,5 ancho 20`);
+    } catch (e) { aviso(`«${f.name}» no es una imagen que el navegador pueda abrir.`); }
+  }
+  if (agregadas) aviso(agregadas === 1 ? "Imagen agregada." : `${agregadas} imágenes agregadas.`);
+  pintarBiblioteca();
+}
+function insertarLinea(texto) {
+  const pos = src.selectionEnd;
+  const fin = src.value.indexOf("\n", pos);
+  const at = fin < 0 ? src.value.length : fin;
+  const pre = src.value.slice(0, at), sep = pre.length && !pre.endsWith("\n") ? "\n" : "";
+  src.setRangeText(sep + texto, at, at, "end");
+  src.dispatchEvent(new Event("input"));
+}
+function pintarBiblioteca() {
+  const lista = $("imgLista");
+  if (!lista) return;
+  const items = Object.entries(imagenes);
+  lista.innerHTML = items.map(([k, v]) => `
+    <div class="img-fila">
+      <img src="${v.src}" alt="">
+      <div class="img-info"><b>${esc(k)}</b><span>${v.img.naturalWidth ? `${v.img.naturalWidth} × ${v.img.naturalHeight} px` : "cargando…"}${v.propia ? "" : " · incluida"}</span></div>
+      <button class="btn mini" type="button" data-ins="${esc(k)}">Insertar</button>
+      ${v.propia ? `<button class="btn mini" type="button" data-del="${esc(k)}" aria-label="Borrar ${esc(k)}">Borrar</button>` : ""}
+    </div>`).join("");
+}
+
 /* ================== Asistente: sugerencias y explicación ================== */
 const DOC_ORDEN = {
   etiqueta: ["Tamaño de la etiqueta en mm. Va primero.", "etiqueta 100x60 densidad 203"],
@@ -1569,12 +1748,16 @@ const DOC_ORDEN = {
   circulo:  ["Círculo de un diámetro dado.", "circulo @ 5,5 diam 10 borde 0.3"],
   barras:   ["Código de barras (Code 128, Code 39 o EAN-13).", 'barras "12345678" @ 5,30 alto 12'],
   qr:       ["Código QR.", 'qr "https://weno.dev" @ 70,30 tam 20'],
-  rfid:     ["Graba el chip de una etiqueta RFID. No se dibuja.", 'rfid "3034257BF7194E4000001A85"']
+  rfid:     ["Graba el chip de una etiqueta RFID. No se dibuja.", 'rfid "3034257BF7194E4000001A85"'],
+  imagen:   ["Pone una imagen subida con el botón «Imágenes», en blanco y negro.", 'imagen "weno" @ 5,5 ancho 20']
 };
 const DOC_PROP = {
   tam: ["Alto de la letra en mm (por defecto 4). En qr: lado aproximado.", "tam 4"],
   negrita: ["Letra más gruesa.", "negrita"],
-  ancho: ["Ancho de la caja de texto en mm; el texto se parte en líneas.", "ancho 40"],
+  ancho: ["Ancho en mm. En texto, el texto se parte en líneas; en imagen, el alto se ajusta solo.", "ancho 40"],
+  umbral: ["Qué tan oscuro debe ser un punto para imprimirse negro, de 1 a 99 (50). Sube para más negro.", "umbral 50"],
+  tramado: ["Simula grises con puntitos. Ideal para fotos.", "tramado"],
+  invertir: ["Cambia negro por blanco.", "invertir"],
   lineas: ["Máximo de líneas dentro del ancho.", "lineas 2"],
   centro: ["Centra el texto dentro de su ancho.", "centro"],
   derecha: ["Alinea el texto a la derecha.", "derecha"],
@@ -1588,7 +1771,7 @@ const DOC_PROP = {
   relleno: ["Relleno negro completo.", "relleno"],
   grosor: ["Grosor de la línea en mm (por defecto 0.3).", "grosor 0.3"],
   diam: ["Diámetro del círculo en mm.", "diam 10"],
-  alto: ["Alto de las barras en mm (por defecto 12).", "alto 12"],
+  alto: ["Alto en mm (barras: 12 por defecto; imagen: el ancho se ajusta solo).", "alto 12"],
   tipo: ["Tipo de código: code128, code39 o ean13.", "tipo "],
   modulo: ["Ancho de la barra más fina en mm (0.25). Más grueso se escanea mejor.", "modulo 0.25"],
   sintexto: ["Oculta el número que va bajo las barras.", "sintexto"],
@@ -1823,6 +2006,11 @@ function explicarLinea(linea) {
     case "circulo": return `Dibuja un círculo de <b>${mm(p.diam || "?")}</b> de diámetro ${donde}, ${p.relleno ? "relleno de negro" : `con borde de ${mm(p.borde || "0.3")}`}.`;
     case "barras": return `Genera un código de barras <b>${esc((p.tipo || "code128").toUpperCase())}</b> con ${mostrar(val)} ${donde}, de ${mm(p.alto || "12")} de alto y barra fina de ${mm(p.modulo || "0.25")}${p.sintexto ? ", sin el número debajo" : ", con el número debajo"}.`;
     case "qr": return `Genera un código <b>QR</b> con ${mostrar(val)} ${donde}, de unos ${mm(p.tam || "20")} de lado (corrección ${esc((p.nivel || "m").toUpperCase())}).`;
+    case "imagen": {
+      const tam = p.ancho ? `de ${mm(p.ancho)} de ancho` : p.alto ? `de ${mm(p.alto)} de alto` : "de 20 mm de ancho (por defecto)";
+      const ok = imagenes[val.toLowerCase()];
+      return `Pone la imagen <b>«${esc(val)}»</b> ${donde}, ${tam}, en blanco y negro${p.tramado ? " con tramado (grises con puntos)" : ""}${p.invertir ? ", invertida" : ""}.${ok ? "" : " <b>Esa imagen no está en la biblioteca</b>: súbela con el botón «Imágenes»."}`;
+    }
     case "rfid": {
       let bloq = "";
       if (p.permanente) bloq = ", y lo <b>bloquea para siempre</b> (no se podrá cambiar nunca más)";
@@ -1947,6 +2135,32 @@ $("copiarZpl").addEventListener("click", () => {
 $("serieAnt").addEventListener("click", () => { if (indiceSerie > 0) { indiceSerie--; actualizar(); } });
 $("serieSig").addEventListener("click", () => { if (ultimo?.doc.serie && indiceSerie < ultimo.doc.serie.cantidad - 1) { indiceSerie++; actualizar(); } });
 $("copiarNova").addEventListener("click", () => copiar(src.value, "Código WENO copiado."));
+
+// Imágenes: panel, subida y arrastrar al editor
+$("btnImagenes").addEventListener("click", e => {
+  const pnl = $("panelImg"), abierto = pnl.hidden;
+  pnl.hidden = !abierto; $("btnImagenes").setAttribute("aria-expanded", String(abierto));
+  if (abierto) pintarBiblioteca();
+});
+document.addEventListener("click", e => {
+  const pnl = $("panelImg");
+  if (!pnl.hidden && !pnl.contains(e.target) && e.target !== $("btnImagenes")) { pnl.hidden = true; $("btnImagenes").setAttribute("aria-expanded", "false"); }
+});
+$("imgArchivo").addEventListener("change", e => { agregarArchivos([...e.target.files], true); e.target.value = ""; });
+$("imgLista").addEventListener("click", e => {
+  const ins = e.target.closest("[data-ins]"), del = e.target.closest("[data-del]");
+  if (ins) { insertarLinea(`imagen "${ins.dataset.ins}" @ 5,5 ancho 20`); $("panelImg").hidden = true; src.focus(); }
+  if (del) { delete imagenes[del.dataset.del]; guardarBiblioteca(); pintarBiblioteca(); actualizar(); }
+});
+const zonaEditor = document.querySelector(".editor");
+zonaEditor.addEventListener("dragover", e => { if ([...e.dataTransfer.items].some(i => i.type.startsWith("image/"))) { e.preventDefault(); zonaEditor.classList.add("soltar"); } });
+zonaEditor.addEventListener("dragleave", () => zonaEditor.classList.remove("soltar"));
+zonaEditor.addEventListener("drop", e => {
+  const files = [...e.dataTransfer.files].filter(f => f.type.startsWith("image/"));
+  zonaEditor.classList.remove("soltar");
+  if (files.length) { e.preventDefault(); agregarArchivos(files, true); }
+});
+cargarBiblioteca();
 
 // Inicio
 let inicial = EJEMPLOS.envio;
