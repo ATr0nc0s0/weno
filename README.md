@@ -29,6 +29,7 @@ Pruébalo en **https://weno.dev**: escribe a la izquierda, mira la etiqueta en v
 - 9 fuentes libres que se envían como imagen, y todas las fuentes residentes de Zebra con `fuente zebra/…`.
 - Edición visual: arrastra elementos en la vista previa para moverlos o cambiar su tamaño y el código se actualiza solo.
 - Autocompletado con explicación de cada orden y un panel que explica en español lo que hace cada línea.
+- Bloque `menu` … `fin` para la configuración fija de la impresora: contraste, velocidad, tipo de impresión, papel, sensor, ancho, guardar y calibrar.
 - Tildes y ñ en UTF-8.
 - `po` opcional al final de cualquier línea.
 

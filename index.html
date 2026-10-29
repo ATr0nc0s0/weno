@@ -417,6 +417,7 @@ label.btn { display: inline-flex; align-items: center; }
         <option value="rfid4419">RFID 44 × 19 mm</option>
         <option value="serie">Serie RFID correlativa (3)</option>
         <option value="serie4419">RFID 44 × 19 correlativo</option>
+        <option value="menu">Configurar impresora (menu)</option>
       </select>
     </label>
     <div class="img-wrap">
@@ -547,6 +548,22 @@ label.btn { display: inline-flex; align-items: center; }
           <tr><td><code>zebra/P</code> … <code>zebra/V</code></td><td>Fuente 0 en tamaños fijos, de 20 a 80 puntos</td><td>Solo en algunos modelos</td></tr>
           <tr><td><code>zebra/E:ARCHIVO.TTF</code></td><td>Cualquier fuente instalada en la impresora (ej. <code>zebra/E:TT0003M_.TTF</code>, Swiss 721)</td><td>Usa <code>^A@</code>; vista previa aproximada</td></tr>
         </table></div>
+
+        <h2>Menú de la impresora</h2>
+        <p>El bloque <code>menu</code> … <code>fin</code> cambia la configuración fija de la impresora, igual que su pantalla de «Calidad de impresión». Va una sola vez antes de las etiquetas. Sin <code>guardar</code>, los cambios duran hasta que la apagues.</p>
+        <div class="tbl"><table>
+          <tr><th>Parámetro</th><th>Valores</th><th>En la pantalla</th><th>ZPL</th></tr>
+          <tr><td><code>contraste</code></td><td>0 a 30</td><td>Contraste</td><td><code>~SD</code></td></tr>
+          <tr><td><code>velocidad</code></td><td>1 a 14 pulgadas/s</td><td>Vel. Impresión</td><td><code>^PR</code></td></tr>
+          <tr><td><code>desplazamiento</code></td><td>1 a 14 pulgadas/s</td><td>Velocid desplazamiento</td><td><code>^PR</code></td></tr>
+          <tr><td><code>impresion</code></td><td><code>transferencia</code> (con cinta) · <code>termica</code> (sin cinta)</td><td>Tipo de impresión</td><td><code>^MT</code></td></tr>
+          <tr><td><code>papel</code></td><td><code>espacio</code> · <code>marca</code> · <code>continuo</code></td><td>Tipo de papel</td><td><code>^MN</code></td></tr>
+          <tr><td><code>sensor</code></td><td><code>transmisivo</code> · <code>reflectivo</code></td><td>Tipo de sensor</td><td><code>^JS</code></td></tr>
+          <tr><td><code>ancho</code></td><td>mm</td><td>Anch. etiq.</td><td><code>^PW</code></td></tr>
+          <tr><td><code>guardar</code></td><td></td><td>Guardar configuración</td><td><code>^JUS</code></td></tr>
+          <tr><td><code>calibrar</code></td><td></td><td>Calibrar</td><td><code>~JC</code></td></tr>
+        </table></div>
+        <p>Sensor transmisivo: etiquetas con espacio o muesca entre ellas. Sensor reflectivo: papel con marca negra en el reverso. Después de cambiar papel o sensor, conviene <code>calibrar</code>.</p>
 
         <h2>Imágenes</h2>
         <p>Las impresoras térmicas solo imprimen negro. WENO convierte la imagen en puntos negros al tamaño exacto de tu impresora. Para logos y dibujos funciona bien tal cual; si queda muy clara o muy oscura, ajusta <code>umbral</code>. Para fotos usa <code>tramado</code>, que simula grises con puntitos. Las imágenes subidas quedan guardadas en este navegador: si compartes tu código <code>.weno</code>, comparte también la imagen con el mismo nombre.</p>
@@ -711,6 +728,26 @@ texto "{prefijo}{corr}" @ 1.5,15.6 tam 1.8 fuente mono
 qr "{prefijo}{corr}" @ 31.5,1.5 tam 11
 texto "RFID" @ 31.5,13.4 tam 2 ancho 10.6 centro negrita
 `,
+  menu: `// Configura la impresora y luego imprime una etiqueta de prueba.
+// Lo del bloque menu queda en la impresora; con «guardar» sigue aunque se apague.
+etiqueta 104x28 densidad 300
+
+menu
+  contraste 26            // oscuridad 0 a 30
+  velocidad 2             // pulgadas por segundo al imprimir
+  desplazamiento 2        // pulgadas por segundo al avanzar sin imprimir
+  impresion transferencia // transferencia (con cinta) o termica (sin cinta)
+  papel espacio           // espacio (espacio/muesca), marca (marca negra) o continuo
+  sensor transmisivo      // transmisivo o reflectivo
+  ancho 104               // ancho de impresión en mm
+  guardar                 // deja todo guardado aunque se apague
+fin
+
+caja @ 1,1 102x26 borde 0.4 radio 1
+texto "PRUEBA DE IMPRESORA" @ centro,4 tam 5 negrita
+texto "Contraste 26 · 2 pps · cinta · sensor transmisivo" @ centro,12 tam 3
+barras "PRUEBA-0001" @ centro,17 alto 6 modulo 0.25 sintexto
+`,
   credencial: `// Credencial 86 x 54 mm (tamaño tarjeta)
 etiqueta 86x54 densidad 300
 
@@ -751,7 +788,29 @@ function sugerir(w, lista) {
 }
 
 /* ================== Lenguaje ================== */
-const ORDENES = ["etiqueta", "densidad", "copias", "fuente", "var", "texto", "caja", "linea", "circulo", "barras", "qr", "rfid", "serie", "imagen", "oscuridad"];
+// Parámetros del bloque «menu» (configuración fija de la impresora, como en su pantalla)
+const MENU = {
+  contraste:      { tipo: "num", min: 0, max: 30, desc: "Oscuridad de impresión, 0 a 30 (en la pantalla: Contraste).", ej: "20" },
+  velocidad:      { tipo: "num", min: 1, max: 14, desc: "Velocidad de impresión en pulgadas por segundo (Vel. Impresión).", ej: "4" },
+  desplazamiento: { tipo: "num", min: 1, max: 14, desc: "Velocidad de avance cuando no imprime (Velocid desplazamiento).", ej: "4" },
+  impresion:      { tipo: { transferencia: "Con cinta (Trans. Térmica)", termica: "Sin cinta, papel térmico (Térmica directa)" }, desc: "Tipo de impresión: con cinta o sin cinta.", ej: "transferencia" },
+  papel:          { tipo: { espacio: "Etiquetas separadas por espacio o muesca (Espacio Inter/Muesca)", marca: "Papel con marca negra atrás", continuo: "Papel continuo, sin separación" }, desc: "Tipo de papel (cómo detecta dónde empieza cada etiqueta).", ej: "espacio" },
+  sensor:         { tipo: { transmisivo: "Ve a través del papel: para etiquetas con espacio entre ellas", reflectivo: "Lee el reverso: para marca negra o perforaciones" }, desc: "Sensor de papel: transmisivo o reflectivo.", ej: "transmisivo" },
+  ancho:          { tipo: "num", min: 10, max: 300, desc: "Ancho de impresión en mm (Anch. etiq.).", ej: "100" },
+  guardar:        { tipo: "flag", desc: "Guarda la configuración para que siga al apagar la impresora." },
+  calibrar:       { tipo: "flag", desc: "La impresora avanza unas etiquetas para medir el papel. Úsalo al cambiar de rollo o de sensor." }
+};
+const MENU_ALIAS = { "impresión": "impresion", "oscuridad": "contraste", "densidad": "contraste", "vel": "velocidad", "avance": "desplazamiento", "termica": "termica", "directa": "termica", "cinta": "transferencia", "gap": "espacio", "muesca": "espacio", "transmisiva": "transmisivo", "reflectiva": "reflectivo", "reflexivo": "reflectivo" };
+const PLANTILLA_MENU = `menu
+  contraste 20            // oscuridad 0 a 30
+  velocidad 4             // pulgadas por segundo al imprimir
+  desplazamiento 4        // pulgadas por segundo al avanzar sin imprimir
+  impresion transferencia // transferencia (con cinta) o termica (sin cinta)
+  papel espacio           // espacio (espacio/muesca), marca (marca negra) o continuo
+  sensor transmisivo      // transmisivo o reflectivo
+  guardar                 // deja todo guardado aunque se apague
+fin`;
+const ORDENES = ["etiqueta", "densidad", "copias", "fuente", "var", "texto", "caja", "linea", "circulo", "barras", "qr", "rfid", "serie", "imagen", "oscuridad", "menu", "fin"];
 const ALIAS = { "codigo": "barras", "codigobarras": "barras", "rectangulo": "caja", "cuadro": "caja", "circ": "circulo", "variable": "var", "dpi": "densidad", "txt": "texto" };
 
 // Propiedades por orden: tipo num | int | flag | enum:[...]
@@ -840,12 +899,38 @@ function analizar(codigo, indice = 0) {
   const doc = { ancho: 100, alto: 60, dpi: 203, copias: 1, elems: [], rfid: [], diag: [], tieneEtiqueta: false };
   const vars = Object.assign(fechaHoy(), { nro: String(indice + 1), total: "1" });
   const lineas = codigo.split("\n");
+  let enMenu = null;
   lineas.forEach((texto, i) => {
     const ln = i + 1;
     let toks = tokenizar(texto).filter(t => t.t !== "com");
     // «po» al final de la línea es opcional: si es chileno, es weno
     if (toks.length > 1 && toks[toks.length - 1].t === "word" && norm(toks[toks.length - 1].v) === "po") toks.pop();
     if (!toks.length) return;
+    if (enMenu) {
+      try {
+        const w0 = norm(toks[0].v), p = MENU_ALIAS[w0] || w0;
+        if (p === "fin") { enMenu = null; return; }
+        if (p === "menu") throw new ErrNova("Ya estás dentro de un menu. Ciérralo con «fin» antes de abrir otro.");
+        const def = MENU[p];
+        if (!def) throw new ErrNova(`El menu no tiene «${toks[0].v}».${sugerir(p, Object.keys(MENU).concat("fin"))} Si terminaste, cierra el bloque con «fin».`);
+        if (def.tipo === "flag") { doc.menu[p] = true; return; }
+        const v = toks[1];
+        if (!v) throw new ErrNova(`Falta el valor de ${p}. ${def.desc}`);
+        if (def.tipo === "num") {
+          const n = leerLong(v, p);
+          if (n < def.min || n > def.max) throw new ErrNova(`${p} va de ${def.min} a ${def.max}.`);
+          doc.menu[p] = n;
+        } else {
+          const vv = MENU_ALIAS[norm(v.v)] || norm(v.v);
+          if (!def.tipo[vv]) throw new ErrNova(`${p} acepta: ${Object.keys(def.tipo).join(", ")}.${sugerir(vv, Object.keys(def.tipo))}`);
+          doc.menu[p] = vv;
+        }
+        if (p === "contraste" && doc.menu[p] >= 25) doc.diag.push({ ln, tipo: "wrn", msg: "Un contraste muy alto puede emborronar los códigos de barras y gastar antes el cabezal." });
+      } catch (e) {
+        doc.diag.push({ ln, tipo: "err", msg: e instanceof ErrNova ? e.message : "Error interno: " + e.message });
+      }
+      return;
+    }
     try {
       const t0 = toks[0];
       if (t0.t !== "word") throw new ErrNova("Cada línea debe empezar con una orden, por ejemplo: texto, caja, barras.");
@@ -855,6 +940,14 @@ function analizar(codigo, indice = 0) {
       let k = 1;
       const next = () => toks[k++];
 
+      if (cmd === "menu") {
+        if (doc.menu) throw new ErrNova("Solo puede haber un bloque menu.");
+        doc.menu = { ln };
+        enMenu = doc.menu;
+        if (toks.length > 1) throw new ErrNova("Escribe los parámetros del menu en las líneas siguientes, uno por línea, y cierra con «fin».");
+        return;
+      }
+      if (cmd === "fin") throw new ErrNova("Este «fin» no cierra nada: no hay un «menu» abierto.");
       if (cmd === "serie") {
         const n = next();
         if (!n || n.t !== "word") throw new ErrNova('Escribe: serie nombre desde "0001" cantidad 10');
@@ -1043,6 +1136,9 @@ function analizar(codigo, indice = 0) {
   if (claves.length > 1) doc.diag.push({ ln: doc.rfid[0].ln, tipo: "err", msg: "Un tag tiene una sola clave de acceso: usa la misma clave en todas las líneas rfid." });
   if (doc.rfid.length && doc.copias > 1)
     doc.diag.push({ ln: doc.rfid[0].ln, tipo: "wrn", msg: `Con ${doc.copias} copias, todos los tags quedarán con el mismo dato RFID. Para que cada tag tenga su propio dato, usa una serie (orden «serie»).` });
+  if (enMenu) doc.diag.push({ ln: enMenu.ln, tipo: "err", msg: "Falta «fin» para cerrar el bloque menu." });
+  if (doc.menu && doc.menu.sensor === "transmisivo" && doc.menu.papel === "marca")
+    doc.diag.push({ ln: doc.menu.ln, tipo: "wrn", msg: "Para papel con marca negra se usa el sensor reflectivo." });
   if (!doc.tieneEtiqueta) doc.diag.unshift({ ln: 1, tipo: "wrn", msg: "Sin «etiqueta AxB»: uso 100x60 mm por defecto." });
   return doc;
 }
@@ -1572,7 +1668,7 @@ function zplHtml(z) {
 }
 
 /* ================== Resaltado del editor ================== */
-const TODAS_PROPS = new Set(Object.values(PROPS).flatMap(o => Object.keys(o)).concat(Object.keys(PROP_ALIAS), ["a", "centro", "izquierda", "derecha", "code128", "code39", "ean13", "desde", "cantidad", "paso", "hex", "decimal"], Object.keys(FUENTES)));
+const TODAS_PROPS = new Set(Object.values(PROPS).flatMap(o => Object.keys(o)).concat(Object.keys(PROP_ALIAS), ["a", "centro", "izquierda", "derecha", "code128", "code39", "ean13", "desde", "cantidad", "paso", "hex", "decimal"], Object.keys(FUENTES), ...Object.values(MENU).filter(d => typeof d.tipo === "object").map(d => Object.keys(d.tipo))));
 function resaltar(codigo) {
   return codigo.split("\n").map(linea => {
     const toks = tokenizar(linea);
@@ -1588,7 +1684,7 @@ function resaltar(codigo) {
       else if (t.t === "@") cls = "tk-at";
       else if (t.t === "word") {
         const n = norm(t.v);
-        if (first && (ORDENES.includes(n) || ALIAS[n])) cls = "tk-cmd";
+        if (first && (ORDENES.includes(n) || ALIAS[n] || MENU[n] || MENU_ALIAS[n])) cls = "tk-cmd";
         else if (t === ultimo && n === "po") cls = "tk-po";
         else if (/^-?\d/.test(t.v)) cls = "tk-num";
         else if (TODAS_PROPS.has(n) || n.startsWith("zebra/")) cls = "tk-prop";
@@ -1608,6 +1704,26 @@ function resaltar(codigo) {
 const src = $("src"), hl = $("hl"), gutter = $("gutter"), cv = $("cv");
 const medidor = document.createElement("canvas").getContext("2d");
 let ultimo = null, zplCache = { codigo: null, z: "" }, indiceSerie = 0;
+// Configuración fija de la impresora: va una sola vez, antes de las etiquetas
+function zplMenu(doc) {
+  const m = doc.menu;
+  if (!m) return "";
+  const L = [];
+  if (m.contraste != null) L.push(`~SD${String(Math.round(m.contraste)).padStart(2, "0")}`);
+  L.push("^XA", `^FX Configuración de la impresora (menu, línea ${m.ln})`);
+  if (m.impresion) L.push(m.impresion === "transferencia" ? "^MTT" : "^MTD");
+  if (m.papel) L.push({ espacio: "^MNY", marca: "^MNM", continuo: "^MNN" }[m.papel]);
+  if (m.sensor) L.push(m.sensor === "transmisivo" ? "^JST" : "^JSR");
+  if (m.velocidad != null || m.desplazamiento != null) {
+    const v = Math.round(m.velocidad ?? m.desplazamiento), d = Math.round(m.desplazamiento ?? m.velocidad);
+    L.push(`^PR${v},${d}`);
+  }
+  if (m.ancho != null) L.push(`^PW${Math.round(m.ancho * doc.dpi / 25.4)}`);
+  if (m.guardar) L.push("^JUS");
+  L.push("^XZ");
+  if (m.calibrar) L.push("~JC");
+  return L.join("\n") + "\n";
+}
 function zplCompleto() {
   const codigo = src.value;
   if (zplCache.codigo === codigo) return zplCache.z;
@@ -1623,6 +1739,7 @@ function zplCompleto() {
     }
     z = partes.join("\n");
   }
+  z = zplMenu(base) + z;
   zplCache = { codigo, z };
   return z;
 }
@@ -1663,7 +1780,8 @@ function actualizar() {
 
   $("tam").textContent = `${doc.ancho} × ${doc.alto} mm · ${comp.W} × ${comp.H} pt`;
   const osc = doc.oscuridad ? ` · oscuridad ${doc.oscuridad.relativa ? (doc.oscuridad.valor > 0 ? "+" : "") + doc.oscuridad.valor : doc.oscuridad.valor}` : "";
-  $("dpiInfo").textContent = `${doc.dpi} ppp${doc.copias > 1 ? ` · ${doc.copias} copias` : ""}${osc}`;
+  const men = doc.menu ? " · menú de impresora" : "";
+  $("dpiInfo").textContent = `${doc.dpi} ppp${doc.copias > 1 ? ` · ${doc.copias} copias` : ""}${osc}${men}`;
   $("nEl").textContent = comp.items.length;
   $("dims").textContent = `${doc.ancho} × ${doc.alto} mm${doc.rfid.length ? " · con RFID" : ""}${doc.serie ? ` · etiqueta ${indiceSerie + 1} de ${doc.serie.cantidad}` : ""}`;
   $("rfidInfo").textContent = doc.rfid.length ? doc.rfid.map(r => `${r.banco.toUpperCase()} ${r.bytes * 8} bits${r.permanente ? " (bloqueo permanente)" : r.bloquear ? " (bloqueado con clave)" : ""}`).join(" + ") : "no";
@@ -1801,6 +1919,8 @@ const DOC_ORDEN = {
   etiqueta: ["Tamaño de la etiqueta en mm. Va primero.", "etiqueta 100x60 densidad 203"],
   densidad: ["Puntos por pulgada de la impresora: 203, 300 o 600.", "densidad 203"],
   copias:   ["Cuántas copias imprimir de cada etiqueta.", "copias 1"],
+  menu:     ["Configuración fija de la impresora: contraste, velocidad, papel, sensor… Se cierra con «fin».", PLANTILLA_MENU],
+  fin:      ["Cierra el bloque menu.", "fin"],
   oscuridad:["Qué tan oscuro imprime: 0 a 30 fija el valor; +2 o -3 lo ajusta respecto del actual.", "oscuridad +2"],
   fuente:   ["Letra para todos los textos que vienen después.", "fuente legible"],
   var:      ["Guarda un dato con un nombre. Úsalo después con {nombre}.", 'var nombre = "valor"'],
@@ -1887,8 +2007,34 @@ function contextoCursor() {
   const antes = src.value.slice(ini, pos);
   return { pos, ini, antes };
 }
+function enBloqueMenu(pos) {
+  // ¿La línea del cursor está entre «menu» y «fin»?
+  const previas = src.value.slice(0, src.value.lastIndexOf("\n", pos - 1) + 1).split("\n");
+  for (let i = previas.length - 1; i >= 0; i--) {
+    const w = norm((tokenizar(previas[i]).find(t => t.t === "word") || {}).v || "");
+    if (w === "fin") return false;
+    if (w === "menu") return true;
+  }
+  return false;
+}
 function calcularSugerencias(forzar) {
   const { pos, antes } = contextoCursor();
+  if (enBloqueMenu(pos) && !/"/.test(antes)) {
+    const mp = /\S*$/.exec(antes), parcial = mp ? mp[0] : "";
+    const toksM = tokenizar(antes.slice(0, antes.length - parcial.length)).filter(t => t.t !== "com");
+    if (!forzar && !parcial && !toksM.length) return null;
+    if (!toksM.length) {
+      const items = Object.entries(MENU).map(([k, d]) => ({ lbl: k, tipo: "menú", desc: d.desc, ins: d.tipo === "flag" ? k : `${k} ${d.ej}` }))
+        .concat([{ lbl: "fin", tipo: "cierre", desc: "Cierra el bloque menu.", ins: "fin" }]);
+      return { items: items.filter(i => norm(i.lbl).startsWith(norm(parcial))), desde: pos - parcial.length };
+    }
+    const p = MENU_ALIAS[norm(toksM[0].v)] || norm(toksM[0].v);
+    if (toksM.length === 1 && MENU[p] && typeof MENU[p].tipo === "object") {
+      const items = Object.entries(MENU[p].tipo).map(([k, d]) => ({ lbl: k, tipo: "valor", desc: d, ins: k }));
+      return { items: items.filter(i => norm(i.lbl).startsWith(norm(parcial))), desde: pos - parcial.length };
+    }
+    return null;
+  }
   const comillas = (antes.match(/(?<!\\)"/g) || []).length;
   // Dentro de comillas: solo variables tras «{»
   if (comillas % 2 === 1) {
@@ -1940,6 +2086,7 @@ function calcularSugerencias(forzar) {
     return { items: items.filter(i => norm(i.lbl).startsWith(norm(parcial))), desde: pos - parcial.length };
   }
   // Si falta la posición, la sugerimos primero
+  if (cmd === "menu" || cmd === "fin") return null;
   const necesitaPos = !["etiqueta", "densidad", "copias", "fuente", "var", "serie", "rfid", "oscuridad"].includes(cmd);
   const tienePos = toks.some(t => t.t === "@");
   const necesitaValor = ["texto", "barras", "qr", "rfid"].includes(cmd) && !toks.some(t => t.t === "str");
@@ -2040,6 +2187,8 @@ function explicarLinea(linea) {
   switch (cmd) {
     case "etiqueta": return `Define una etiqueta de <b>${esc(dim ? dim.replace("x", " × ") : "?")} mm</b> (ancho × alto)${p.densidad ? `, para una impresora de ${esc(p.densidad)} puntos por pulgada` : ""}${p.copias ? ` y ${esc(p.copias)} copias` : ""}.`;
     case "densidad": { const d = +(palabras[0]?.v); return `La impresora imprime a <b>${esc(palabras[0]?.v ?? "?")} puntos por pulgada</b>${d ? ` (unos ${(d / 25.4).toFixed(1)} puntos por mm)` : ""}.`; }
+    case "menu": return "Abre el bloque de <b>configuración fija de la impresora</b>. Escribe un parámetro por línea y ciérralo con «fin».";
+    case "fin": return "Cierra el bloque menu.";
     case "oscuridad": {
       const v = palabras[0]?.v ?? "?";
       if (/^[+-]/.test(v)) return `Ajusta la oscuridad <b>${esc(v)}</b> respecto de la configurada en la impresora${v.startsWith("-") ? " (más clara)" : " (más oscura)"}, sin cambiar esa configuración.`;
@@ -2089,6 +2238,24 @@ function explicarLinea(linea) {
   }
   return "";
 }
+function explicarMenu(linea) {
+  const t = tokenizar(linea).filter(k => k.t !== "com");
+  if (!t.length) return "Línea vacía dentro del menu. Escribe un parámetro (contraste, velocidad, papel, sensor…) o «fin» para cerrar.";
+  const p = MENU_ALIAS[norm(t[0].v)] || norm(t[0].v), v = t[1]?.v;
+  if (p === "fin") return "Cierra el bloque <b>menu</b>. Lo que sigue ya es la etiqueta.";
+  const d = MENU[p];
+  if (!d) return `«${esc(t[0].v)}» no es un parámetro del menu.`;
+  const val = v ? (typeof d.tipo === "object" ? (d.tipo[MENU_ALIAS[norm(v)] || norm(v)] || v) : v) : "";
+  switch (p) {
+    case "contraste": return `Fija el <b>contraste (oscuridad) en ${esc(v ?? "?")}</b>, en escala de 0 a 30.`;
+    case "velocidad": return `Imprime a <b>${esc(v ?? "?")} pulgadas por segundo</b> (unos ${v ? Math.round(+v * 25.4) : "?"} mm/s). Más lento suele verse mejor.`;
+    case "desplazamiento": return `Avanza el papel sin imprimir a <b>${esc(v ?? "?")} pulgadas por segundo</b>.`;
+    case "guardar": return "Guarda esta configuración en la impresora: <b>seguirá igual aunque la apagues</b>.";
+    case "calibrar": return "La impresora <b>avanza unas etiquetas para medir el papel</b>. Úsalo al cambiar de rollo, de papel o de sensor.";
+    case "ancho": return `Fija el <b>ancho de impresión en ${esc(v ?? "?")} mm</b>.`;
+    default: return `${esc(d.desc)} Elegido: <b>${esc(val || "?")}</b>.`;
+  }
+}
 function palabraEnCursor() {
   const { pos } = contextoCursor();
   const v = src.value;
@@ -2101,10 +2268,10 @@ function actualizarAyuda() {
   const { ini } = contextoCursor();
   let fin = src.value.indexOf("\n", ini); if (fin < 0) fin = src.value.length;
   const linea = src.value.slice(ini, fin);
-  let html = `<span class="t">Esta línea</span>${explicarLinea(linea)}`;
+  let html = `<span class="t">Esta línea</span>${enBloqueMenu(ini + 1) && !/^\s*menu\b/i.test(linea) ? explicarMenu(linea) : explicarLinea(linea)}`;
   const w = norm(palabraEnCursor());
   const wn = PROP_ALIAS[w] || ALIAS[w] || w;
-  const d = DOC_ORDEN[wn]?.[0] || DOC_PROP[wn]?.[0];
+  const d = DOC_ORDEN[wn]?.[0] || DOC_PROP[wn]?.[0] || (enBloqueMenu(ini + 1) ? MENU[MENU_ALIAS[wn] || wn]?.desc : null);
   if (d) html += `<span class="palabra"><code>${esc(wn)}</code> ${esc(d)}</span>`;
   $("ayuda").innerHTML = html;
 }
