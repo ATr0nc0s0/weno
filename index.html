@@ -428,7 +428,7 @@ label.btn { display: inline-flex; align-items: center; }
           <label class="btn primary mini" for="imgArchivo">Subir imagen</label>
           <input id="imgArchivo" type="file" accept="image/*" multiple hidden>
         </div>
-        <p class="panel-img-nota">También puedes arrastrar una imagen al editor. Se guardan en este navegador. Para logos usa PNG o SVG con fondo blanco o transparente.</p>
+        <p class="panel-img-nota">Al subirla, WENO la convierte sola a blanco y negro: los logos quedan en negro puro y las fotos en escala de grises (se imprimen con puntitos). También puedes arrastrarla al editor. Se guardan en este navegador.</p>
         <div id="imgLista"></div>
       </div>
     </div>
@@ -566,7 +566,7 @@ label.btn { display: inline-flex; align-items: center; }
         <p>Sensor transmisivo: etiquetas con espacio o muesca entre ellas. Sensor reflectivo: papel con marca negra en el reverso. Después de cambiar papel o sensor, conviene <code>calibrar</code>.</p>
 
         <h2>Imágenes</h2>
-        <p>Las impresoras térmicas solo imprimen negro. WENO convierte la imagen en puntos negros al tamaño exacto de tu impresora. Para logos y dibujos funciona bien tal cual; si queda muy clara o muy oscura, ajusta <code>umbral</code>. Para fotos usa <code>tramado</code>, que simula grises con puntitos. Las imágenes subidas quedan guardadas en este navegador: si compartes tu código <code>.weno</code>, comparte también la imagen con el mismo nombre.</p>
+        <p>Las impresoras térmicas solo imprimen negro. WENO convierte la imagen en puntos negros al tamaño exacto de tu impresora. Al subir una imagen, WENO la convierte sola: si es un logo o dibujo la deja en blanco y negro puro, eligiendo el mejor corte entre claro y oscuro; si es una foto la deja en escala de grises y la imprime con <code>tramado</code> (grises con puntitos). Si una foto la quieres en negro puro, agrega <code>umbral 50</code>; si un logo queda muy grueso o muy fino, ajusta <code>umbral</code>. Las imágenes subidas quedan guardadas en este navegador: si compartes tu código <code>.weno</code>, comparte también la imagen con el mismo nombre.</p>
 
         <h2>RFID</h2>
         <p>Necesitas una impresora Zebra con RFID (por ejemplo las series ZT400R, ZT600R o ZD500R/ZD621R) y haber calibrado el RFID una vez desde la impresora. Por defecto <code>rfid</code> escribe el EPC en hex; el EPC más común mide 96 bits (24 caracteres). Si la grabación falla, la impresora marca la etiqueta con VOID y prueba con la siguiente. Para proteger el dato hay dos formas: <code>bloquear clave "1234ABCD"</code> lo bloquea con una clave de 8 caracteres hex (se puede desbloquear con esa clave, así que guárdala), y <code>bloquear permanente</code> lo bloquea para siempre. El bloqueo usa <code>^RLM</code>, de las impresoras RFID Link-OS; las impresoras RFID más antiguas usan <code>^RZ</code>. La vista previa y Labelary no simulan la grabación.</p>
@@ -1264,7 +1264,8 @@ function compilar(doc, ctx) {
         if (wmm && !hmm) hmm = wmm * nh / nw; else if (hmm && !wmm) wmm = hmm * nw / nh;
         const w = Math.max(1, D(wmm)), h = Math.max(1, D(hmm));
         const umbral = Math.max(1, Math.min(99, el.p.umbral ?? 50));
-        const bits = rasterImagen(ref.img, w, h, umbral, !!el.p.tramado, !!el.p.invertir);
+        const tramado = !!el.p.tramado || (ref.tipo === "foto" && el.p.umbral == null);
+        const bits = rasterImagen(ref.img, w, h, umbral, tramado, !!el.p.invertir);
         const x = el.x === "centro" ? Math.round((W - w) / 2) : D(el.x);
         Object.assign(it, { tipo: "imagen", x, y: D(el.y), w, h, bits, cv: lienzoBits(bits, w, h), bw: w, bh: h });
       } else if (el.cmd === "qr") {
@@ -1835,19 +1836,67 @@ const IMG_INCLUIDAS = {
   weno: "data:image/svg+xml," + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200"><text x="0" y="170" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="200">W</text><circle cx="215" cy="160" r="20"/></svg>')
 };
 const imagenes = {};
-function registrarImagen(nombre, srcUrl, propia) {
+function registrarImagen(nombre, srcUrl, propia, tipo) {
   const img = new Image();
-  img.onload = () => { if (typeof actualizar === "function" && src.value) actualizar(); pintarBiblioteca(); };
+  const reg = { src: srcUrl, img, propia, tipo: tipo || (propia ? null : "logo") };
+  img.onload = () => {
+    // Imágenes guardadas antes, todavía en color: se convierten a blanco y negro una vez
+    if (propia && !reg.tipo) {
+      const c2 = document.createElement("canvas"); c2.width = img.naturalWidth; c2.height = img.naturalHeight;
+      const c = c2.getContext("2d"); c.fillStyle = "#fff"; c.fillRect(0, 0, c2.width, c2.height); c.drawImage(img, 0, 0);
+      const r = convertirBN(c2);
+      reg.tipo = r.tipo; reg.src = r.url; img.src = r.url; guardarBiblioteca();
+      return;
+    }
+    if (typeof actualizar === "function" && src.value) actualizar();
+    pintarBiblioteca();
+  };
   img.src = srcUrl;
-  imagenes[nombre] = { src: srcUrl, img, propia };
+  imagenes[nombre] = reg;
+}
+// Convierte a blanco y negro al subir. Detecta si es logo (pocos grises) o foto (muchos grises):
+// logo → blanco y negro puro con umbral automático (Otsu); foto → escala de grises, que se imprime con tramado.
+function convertirBN(c2) {
+  const c = c2.getContext("2d"), W = c2.width, H = c2.height;
+  const im = c.getImageData(0, 0, W, H), d = im.data, N = W * H;
+  const lum = new Uint8ClampedArray(N), hist = new Array(256).fill(0);
+  for (let i = 0; i < N; i++) { const v = Math.round(0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]); lum[i] = v; hist[v]++; }
+  // Logo: casi todo el dibujo cae en pocos tonos planos (aunque sean colores).
+  // Foto: los tonos se reparten en muchos niveles.
+  const grueso = new Array(64).fill(0);
+  for (let v = 0; v < 256; v++) grueso[v >> 2] += hist[v];
+  const top = grueso.slice().sort((a, b) => b - a).slice(0, 8).reduce((a, b) => a + b, 0);
+  const tipo = top / N >= 0.8 ? "logo" : "foto";
+  let corte = 128;
+  if (tipo === "logo") {
+    // Otsu: el corte que mejor separa claros de oscuros
+    let suma = 0; for (let v = 0; v < 256; v++) suma += v * hist[v];
+    let sB = 0, wB = 0, mejor = -1;
+    for (let t = 0; t < 256; t++) {
+      wB += hist[t]; if (!wB) continue;
+      const wF = N - wB; if (!wF) break;
+      sB += t * hist[t];
+      const mB = sB / wB, mF = (suma - sB) / wF, entre = wB * wF * (mB - mF) ** 2;
+      if (entre > mejor) { mejor = entre; corte = t + 0.5; }
+    }
+  }
+  for (let i = 0; i < N; i++) {
+    const v = tipo === "logo" ? (lum[i] < corte ? 0 : 255) : lum[i];
+    d[i * 4] = d[i * 4 + 1] = d[i * 4 + 2] = v; d[i * 4 + 3] = 255;
+  }
+  c.putImageData(im, 0, 0);
+  return { url: c2.toDataURL("image/png"), tipo };
 }
 function cargarBiblioteca() {
-  for (const [k, v] of Object.entries(IMG_INCLUIDAS)) registrarImagen(k, v, false);
-  try { const g = JSON.parse(localStorage.getItem("weno-imagenes") || "{}"); for (const [k, v] of Object.entries(g)) registrarImagen(k, v, true); } catch (e) {}
+  for (const [k, v] of Object.entries(IMG_INCLUIDAS)) registrarImagen(k, v, false, "logo");
+  try {
+    const g = JSON.parse(localStorage.getItem("weno-imagenes") || "{}");
+    for (const [k, v] of Object.entries(g)) typeof v === "string" ? registrarImagen(k, v, true, null) : registrarImagen(k, v.src, true, v.tipo);
+  } catch (e) {}
 }
 function guardarBiblioteca() {
   const o = {};
-  for (const [k, v] of Object.entries(imagenes)) if (v.propia) o[k] = v.src;
+  for (const [k, v] of Object.entries(imagenes)) if (v.propia) o[k] = { src: v.src, tipo: v.tipo };
   try { localStorage.setItem("weno-imagenes", JSON.stringify(o)); return true; }
   catch (e) { aviso("No queda espacio en este navegador para guardar más imágenes. Borra alguna o usa imágenes más chicas."); return false; }
 }
@@ -1869,7 +1918,7 @@ function leerArchivoImagen(file) {
         const c2 = document.createElement("canvas");
         c2.width = Math.max(1, Math.round(img.naturalWidth * f)); c2.height = Math.max(1, Math.round(img.naturalHeight * f));
         const c = c2.getContext("2d"); c.fillStyle = "#fff"; c.fillRect(0, 0, c2.width, c2.height); c.drawImage(img, 0, 0, c2.width, c2.height);
-        ok(c2.toDataURL("image/png"));
+        ok(convertirBN(c2));
       };
       img.onerror = () => mal(new Error("no se pudo leer"));
       img.src = fr.result;
@@ -1878,19 +1927,22 @@ function leerArchivoImagen(file) {
     fr.readAsDataURL(file);
   });
 }
+let ultimoTipo = null;
 async function agregarArchivos(files, insertar) {
   let agregadas = 0;
   for (const f of files) {
     try {
-      const url = await leerArchivoImagen(f);
+      const { url, tipo } = await leerArchivoImagen(f);
+      ultimoTipo = tipo;
       const nombre = nombreLibre(f.name);
-      registrarImagen(nombre, url, true);
+      registrarImagen(nombre, url, true, tipo);
       if (!guardarBiblioteca()) { delete imagenes[nombre]; break; }
       agregadas++;
       if (insertar) insertarLinea(`imagen "${nombre}" @ 5,5 ancho 20`);
     } catch (e) { aviso(`«${f.name}» no es una imagen que el navegador pueda abrir.`); }
   }
-  if (agregadas) aviso(agregadas === 1 ? "Imagen agregada." : `${agregadas} imágenes agregadas.`);
+  if (agregadas === 1) aviso(ultimoTipo === "foto" ? "Foto convertida a escala de grises. Se imprime con puntitos (tramado)." : "Imagen convertida a blanco y negro.");
+  else if (agregadas) aviso(`${agregadas} imágenes convertidas a blanco y negro.`);
   pintarBiblioteca();
 }
 function insertarLinea(texto) {
@@ -1908,7 +1960,7 @@ function pintarBiblioteca() {
   lista.innerHTML = items.map(([k, v]) => `
     <div class="img-fila">
       <img src="${v.src}" alt="">
-      <div class="img-info"><b>${esc(k)}</b><span>${v.img.naturalWidth ? `${v.img.naturalWidth} × ${v.img.naturalHeight} px` : "cargando…"}${v.propia ? "" : " · incluida"}</span></div>
+      <div class="img-info"><b>${esc(k)}</b><span>${v.img.naturalWidth ? `${v.img.naturalWidth} × ${v.img.naturalHeight} px` : "cargando…"}${v.tipo === "foto" ? " · foto, escala de grises" : v.tipo === "logo" ? " · blanco y negro" : ""}${v.propia ? "" : " · incluida"}</span></div>
       <button class="btn mini" type="button" data-ins="${esc(k)}">Insertar</button>
       ${v.propia ? `<button class="btn mini" type="button" data-del="${esc(k)}" aria-label="Borrar ${esc(k)}">Borrar</button>` : ""}
     </div>`).join("");
@@ -2226,7 +2278,8 @@ function explicarLinea(linea) {
     case "imagen": {
       const tam = p.ancho ? `de ${mm(p.ancho)} de ancho` : p.alto ? `de ${mm(p.alto)} de alto` : "de 20 mm de ancho (por defecto)";
       const ok = imagenes[val.toLowerCase()];
-      return `Pone la imagen <b>«${esc(val)}»</b> ${donde}, ${tam}, en blanco y negro${p.tramado ? " con tramado (grises con puntos)" : ""}${p.invertir ? ", invertida" : ""}.${ok ? "" : " <b>Esa imagen no está en la biblioteca</b>: súbela con el botón «Imágenes»."}`;
+      const conTramado = p.tramado || (ok?.tipo === "foto" && !p.umbral);
+      return `Pone la imagen <b>«${esc(val)}»</b> ${donde}, ${tam}, en blanco y negro${conTramado ? " con tramado (grises con puntitos)" : ""}${p.invertir ? ", invertida" : ""}.${ok ? (ok.tipo === "foto" ? " Es una foto: se imprime con tramado; si prefieres negro puro, agrega <code>umbral 50</code>." : "") : " <b>Esa imagen no está en la biblioteca</b>: súbela con el botón «Imágenes»."}`;
     }
     case "rfid": {
       let bloq = "";
