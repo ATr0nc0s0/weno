@@ -400,7 +400,7 @@ main {
           <tr><td><code>copias</code></td><td>Cuántas etiquetas imprimir.</td><td><code>copias 5</code></td></tr>
           <tr><td><code>serie</code></td><td>Crea varias etiquetas con un correlativo que sube en cada una. <code>desde</code> valor inicial · <code>cantidad</code> · <code>paso</code> (1) · <code>hex</code> o <code>decimal</code>. Mantiene los ceros a la izquierda.</td><td><code>serie epc desde "30340000000000000000000A" cantidad 3 hex</code></td></tr>
           <tr><td><code>fuente</code></td><td>Letra para todos los textos. Cada texto puede cambiarla con su propia <code>fuente …</code>. Ver la tabla de fuentes más abajo.</td><td><code>fuente legible</code></td></tr>
-          <tr><td><code>var</code></td><td>Define una variable. Úsala en cualquier texto con <code>{nombre}</code>. Incluidas: <code>{fecha}</code>, <code>{hora}</code>, <code>{nro}</code> (número de etiqueta) y <code>{total}</code>.</td><td><code>var cliente = "Ana Pérez"</code></td></tr>
+          <tr><td><code>var</code></td><td>Define una variable. Úsala en cualquier texto con <code>{nombre}</code>. Incluidas: <code>{fecha}</code>, <code>{hora}</code>, <code>{nro}</code> (número de etiqueta) y <code>{total}</code>. Para usar solo una parte: <code>{epc ultimos 10}</code> o <code>{epc primeros 4}</code>.</td><td><code>var cliente = "Ana Pérez"</code></td></tr>
         </table></div>
 
         <h2>Elementos</h2>
@@ -568,7 +568,7 @@ rfid "{epc}"
 texto "ETIQUETA {nro} DE {total}" @ 3,2 tam 3 negrita
 texto "EPC" @ 3,6.5 tam 2.2
 texto "{epc}" @ 3,9.5 tam 2.6 fuente mono
-barras "{epc}" @ centro,13.5 alto 9 modulo 0.17
+barras "{epc ultimos 10}" @ centro,14 alto 9 modulo 0.25
 `,
   serie4419: `// Plantilla RFID 44 x 19 mm con EPC correlativo en hex.
 // EPC (96 bits) = prefijo fijo (16 hex) + correlativo (8 hex).
@@ -698,9 +698,18 @@ function leerCadena(tok, vars) {
   if (!s.endsWith("\"") || s.length < 2) throw new ErrNova("Falta cerrar las comillas del texto.");
   s = s.slice(1, -1).replace(/\\"/g, "\"").replace(/\\\\/g, "\\");
   return s.replace(/\{([^{}]+)\}/g, (_, n) => {
-    const k = norm(n.trim());
-    if (!(k in vars)) throw new ErrNova(`La variable {${n}} no existe. Defínela antes con: var ${n} = "…"` );
-    return vars[k];
+    // {nombre}, {nombre ultimos 10} o {nombre primeros 4}
+    const m = /^\s*(\S+)(?:\s+(ultimos|últimos|primeros)\s+(\d+))?\s*$/i.exec(n);
+    if (!m) throw new ErrNova(`No entiendo {${n}}. Usa {nombre}, {nombre ultimos 10} o {nombre primeros 4}.`);
+    const k = norm(m[1]);
+    if (!(k in vars)) throw new ErrNova(`La variable {${m[1]}} no existe. Defínela antes con: var ${m[1]} = "…"` );
+    let v = vars[k];
+    if (m[2]) {
+      const c = parseInt(m[3], 10);
+      if (!c) throw new ErrNova("La cantidad de caracteres debe ser 1 o más.");
+      v = norm(m[2]).startsWith("ultimos") ? v.slice(-c) : v.slice(0, c);
+    }
+    return v;
   });
 }
 
