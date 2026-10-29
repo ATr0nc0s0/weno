@@ -510,6 +510,7 @@ label.btn { display: inline-flex; align-items: center; }
           <tr><td><code>etiqueta</code></td><td>Tamaño de la etiqueta (ancho x alto). Acepta <code>densidad</code> y <code>copias</code> en la misma línea.</td><td><code>etiqueta 100x60 densidad 203</code></td></tr>
           <tr><td><code>densidad</code></td><td>Puntos por pulgada de la impresora: 152, 203, 300 o 600. Por defecto 203.</td><td><code>densidad 300</code></td></tr>
           <tr><td><code>copias</code></td><td>Cuántas etiquetas imprimir.</td><td><code>copias 5</code></td></tr>
+          <tr><td><code>oscuridad</code></td><td>Qué tan oscuro imprime el cabezal. Un número de 0 a 30 lo fija en la impresora (queda guardado). Con signo, <code>+2</code> o <code>-3</code>, lo ajusta respecto del valor configurado en la impresora, sin cambiar esa configuración.</td><td><code>oscuridad +2</code></td></tr>
           <tr><td><code>serie</code></td><td>Crea varias etiquetas con un correlativo que sube en cada una. <code>desde</code> valor inicial · <code>cantidad</code> · <code>paso</code> (1) · <code>hex</code> o <code>decimal</code>. Mantiene los ceros a la izquierda.</td><td><code>serie epc desde "30340000000000000000000A" cantidad 3 hex</code></td></tr>
           <tr><td><code>fuente</code></td><td>Letra para todos los textos. Cada texto puede cambiarla con su propia <code>fuente …</code>. Ver la tabla de fuentes más abajo.</td><td><code>fuente legible</code></td></tr>
           <tr><td><code>var</code></td><td>Define una variable. Úsala en cualquier texto con <code>{nombre}</code>. Incluidas: <code>{fecha}</code>, <code>{hora}</code>, <code>{nro}</code> (número de etiqueta) y <code>{total}</code>. Para usar solo una parte: <code>{epc ultimos 10}</code> o <code>{epc primeros 4}</code>.</td><td><code>var cliente = "Ana Pérez"</code></td></tr>
@@ -577,6 +578,7 @@ label.btn { display: inline-flex; align-items: center; }
           <tr><td><code>imagen</code></td><td><code>^GFA</code> comprimida, en blanco y negro a la resolución de la impresora</td></tr>
           <tr><td><code>rfid</code></td><td><code>^RS8</code> y <code>^RFW</code>; con <code>bloquear</code>, la clave con <code>^RFW,H,P</code> y el bloqueo con <code>^RLM</code></td></tr>
           <tr><td><code>copias</code></td><td><code>^PQ</code></td></tr>
+          <tr><td><code>oscuridad</code></td><td><code>~SD</code> (valor fijo) o <code>^MD</code> (ajuste con signo)</td></tr>
         </table></div>
         <h2>Aviso de marcas</h2>
         <p>ZPL es una marca registrada de Zebra Technologies Corporation. WENO es un proyecto independiente que genera código ZPL; no está afiliado ni respaldado por Zebra.</p>
@@ -749,7 +751,7 @@ function sugerir(w, lista) {
 }
 
 /* ================== Lenguaje ================== */
-const ORDENES = ["etiqueta", "densidad", "copias", "fuente", "var", "texto", "caja", "linea", "circulo", "barras", "qr", "rfid", "serie", "imagen"];
+const ORDENES = ["etiqueta", "densidad", "copias", "fuente", "var", "texto", "caja", "linea", "circulo", "barras", "qr", "rfid", "serie", "imagen", "oscuridad"];
 const ALIAS = { "codigo": "barras", "codigobarras": "barras", "rectangulo": "caja", "cuadro": "caja", "circ": "circulo", "variable": "var", "dpi": "densidad", "txt": "texto" };
 
 // Propiedades por orden: tipo num | int | flag | enum:[...]
@@ -902,6 +904,21 @@ function analizar(codigo, indice = 0) {
         const v = next();
         if (!v) throw new ErrNova("Indica la fuente, por ejemplo: fuente legible  o  fuente zebra/D");
         doc.fuente = leerFuente(v.v);
+        return;
+      }
+      if (cmd === "oscuridad") {
+        const v = next();
+        const m = v && v.t === "word" ? /^([+-])?(\d+(?:\.\d)?)$/.exec(v.v) : null;
+        if (!m) throw new ErrNova("Indica la oscuridad: un número de 0 a 30 (oscuridad 18) o un ajuste con signo (oscuridad +2 / oscuridad -3).");
+        const n = parseFloat(m[2]);
+        if (m[1]) {
+          if (n > 30) throw new ErrNova("El ajuste de oscuridad va de -30 a +30.");
+          doc.oscuridad = { relativa: true, valor: m[1] === "-" ? -n : n, ln };
+        } else {
+          if (n > 30) throw new ErrNova("La oscuridad va de 0 a 30.");
+          doc.oscuridad = { relativa: false, valor: n, ln };
+          if (n >= 25) doc.diag.push({ ln, tipo: "wrn", msg: "Una oscuridad muy alta puede emborronar los códigos de barras y gastar antes el cabezal. Usa el valor más bajo que se vea bien." });
+        }
         return;
       }
       if (cmd === "copias") {
@@ -1380,8 +1397,11 @@ function zplCampo(s) {
 }
 function aZPL(doc, comp, titulo) {
   const L = [];
+  // ~SD fija la oscuridad de la impresora (queda guardada para lo que imprimas después); ^MD la ajusta solo respecto de la actual
+  if (doc.oscuridad && !doc.oscuridad.relativa) L.push(`~SD${String(doc.oscuridad.valor).padStart(2, "0")}`);
   L.push("^XA");
   if (titulo) L.push(`^FX ${titulo}`);
+  if (doc.oscuridad?.relativa) L.push(`^MD${doc.oscuridad.valor}`);
   L.push("^CI28", `^PW${comp.W}`, `^LL${comp.H}`, "^LH0,0");
   if (doc.rfid.length) {
     // ^RS8: tags Gen 2; el 4.º parámetro es cuántas etiquetas intenta si falla la grabación (imprime VOID)
@@ -1642,7 +1662,8 @@ function actualizar() {
   gutter.innerHTML = g + "<div>&nbsp;</div>";
 
   $("tam").textContent = `${doc.ancho} × ${doc.alto} mm · ${comp.W} × ${comp.H} pt`;
-  $("dpiInfo").textContent = `${doc.dpi} ppp${doc.copias > 1 ? ` · ${doc.copias} copias` : ""}`;
+  const osc = doc.oscuridad ? ` · oscuridad ${doc.oscuridad.relativa ? (doc.oscuridad.valor > 0 ? "+" : "") + doc.oscuridad.valor : doc.oscuridad.valor}` : "";
+  $("dpiInfo").textContent = `${doc.dpi} ppp${doc.copias > 1 ? ` · ${doc.copias} copias` : ""}${osc}`;
   $("nEl").textContent = comp.items.length;
   $("dims").textContent = `${doc.ancho} × ${doc.alto} mm${doc.rfid.length ? " · con RFID" : ""}${doc.serie ? ` · etiqueta ${indiceSerie + 1} de ${doc.serie.cantidad}` : ""}`;
   $("rfidInfo").textContent = doc.rfid.length ? doc.rfid.map(r => `${r.banco.toUpperCase()} ${r.bytes * 8} bits${r.permanente ? " (bloqueo permanente)" : r.bloquear ? " (bloqueado con clave)" : ""}`).join(" + ") : "no";
@@ -1780,6 +1801,7 @@ const DOC_ORDEN = {
   etiqueta: ["Tamaño de la etiqueta en mm. Va primero.", "etiqueta 100x60 densidad 203"],
   densidad: ["Puntos por pulgada de la impresora: 203, 300 o 600.", "densidad 203"],
   copias:   ["Cuántas copias imprimir de cada etiqueta.", "copias 1"],
+  oscuridad:["Qué tan oscuro imprime: 0 a 30 fija el valor; +2 o -3 lo ajusta respecto del actual.", "oscuridad +2"],
   fuente:   ["Letra para todos los textos que vienen después.", "fuente legible"],
   var:      ["Guarda un dato con un nombre. Úsalo después con {nombre}.", 'var nombre = "valor"'],
   serie:    ["Correlativo que sube en cada etiqueta (decimal o hex).", 'serie n desde "0001" cantidad 10'],
@@ -1918,13 +1940,13 @@ function calcularSugerencias(forzar) {
     return { items: items.filter(i => norm(i.lbl).startsWith(norm(parcial))), desde: pos - parcial.length };
   }
   // Si falta la posición, la sugerimos primero
-  const necesitaPos = !["etiqueta", "densidad", "copias", "fuente", "var", "serie", "rfid"].includes(cmd);
+  const necesitaPos = !["etiqueta", "densidad", "copias", "fuente", "var", "serie", "rfid", "oscuridad"].includes(cmd);
   const tienePos = toks.some(t => t.t === "@");
   const necesitaValor = ["texto", "barras", "qr", "rfid"].includes(cmd) && !toks.some(t => t.t === "str");
   if (auto && !(cmd === "fuente" && toks.length === 1)) return null;
   if (necesitaValor) return { items: [{ lbl: '"…"', tipo: "contenido", desc: "Escribe el contenido entre comillas", ins: '"" ' }], desde: pos - parcial.length, solo: !parcial };
   if (necesitaPos && !tienePos) return { items: [{ lbl: "@ x,y", tipo: "posición", desc: "Esquina superior izquierda en mm desde el borde izquierdo y el superior", ins: "@ 5,5 " }], desde: pos - parcial.length };
-  if (["densidad", "copias", "fuente", "var"].includes(cmd) && cmd !== "fuente") return null;
+  if (["densidad", "copias", "fuente", "var", "oscuridad"].includes(cmd) && cmd !== "fuente") return null;
   if (cmd === "fuente" && toks.length === 1) {
     const items = Object.entries(valoresFuente()).map(([k, d]) => ({ lbl: k, tipo: "valor", desc: d, ins: k }));
     return { items: items.filter(i => norm(i.lbl).startsWith(norm(parcial))), desde: pos - parcial.length };
@@ -2018,6 +2040,11 @@ function explicarLinea(linea) {
   switch (cmd) {
     case "etiqueta": return `Define una etiqueta de <b>${esc(dim ? dim.replace("x", " × ") : "?")} mm</b> (ancho × alto)${p.densidad ? `, para una impresora de ${esc(p.densidad)} puntos por pulgada` : ""}${p.copias ? ` y ${esc(p.copias)} copias` : ""}.`;
     case "densidad": { const d = +(palabras[0]?.v); return `La impresora imprime a <b>${esc(palabras[0]?.v ?? "?")} puntos por pulgada</b>${d ? ` (unos ${(d / 25.4).toFixed(1)} puntos por mm)` : ""}.`; }
+    case "oscuridad": {
+      const v = palabras[0]?.v ?? "?";
+      if (/^[+-]/.test(v)) return `Ajusta la oscuridad <b>${esc(v)}</b> respecto de la configurada en la impresora${v.startsWith("-") ? " (más clara)" : " (más oscura)"}, sin cambiar esa configuración.`;
+      return `Fija la oscuridad de la impresora en <b>${esc(v)}</b> (escala 0 a 30). Queda guardada en la impresora para lo que imprimas después.`;
+    }
     case "copias": return `Imprime <b>${esc(palabras[0]?.v ?? "?")} copias</b> de cada etiqueta.`;
     case "fuente": { const f = palabras[0]?.v || ""; const vf = valoresFuente()[norm(f)] || valoresFuente()["zebra/" + f.split("/")[1]?.toUpperCase()]; return `Los textos que siguen usan la fuente <b>${esc(f)}</b>${vf ? ` (${esc(vf)})` : ""}.`; }
     case "var": { const n = palabras[0]?.v; return `Guarda ${mostrar(val)} con el nombre <b>${esc(n ?? "?")}</b>. Escribe <code>{${esc(n ?? "nombre")}}</code> dentro de cualquier texto para usarlo.`; }
