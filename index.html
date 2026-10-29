@@ -315,6 +315,7 @@ main {
         <option value="producto">Producto con precio</option>
         <option value="activo">Activo fijo con QR</option>
         <option value="credencial">Credencial de evento</option>
+        <option value="rfid">Activo con RFID</option>
       </select>
     </label>
     <button id="copiarNova" class="btn" type="button">Copiar código WENO</button>
@@ -364,6 +365,7 @@ main {
         <span>Tamaño <b id="tam">–</b></span>
         <span>Densidad <b id="dpiInfo">–</b></span>
         <span>Elementos <b id="nEl">–</b></span>
+        <span>RFID <b id="rfidInfo">–</b></span>
       </div>
     </div>
 
@@ -396,6 +398,7 @@ main {
           <tr><td><code>linea</code></td><td><code>a x,y</code> punto final · <code>grosor</code> (0.3). Horizontal, vertical o diagonal.</td><td><code>linea @ 2,20 a 98,20 grosor 0.4</code></td></tr>
           <tr><td><code>circulo</code></td><td><code>diam</code> diámetro · <code>borde</code> · <code>relleno</code></td><td><code>circulo @ 80,5 diam 12 relleno</code></td></tr>
           <tr><td><code>barras</code></td><td><code>tipo</code> code128 / code39 / ean13 · <code>alto</code> (12) · <code>modulo</code> barra fina en mm (0.25) · <code>sintexto</code></td><td><code>barras "ABC-123" @ 5,30 alto 15</code></td></tr>
+          <tr><td><code>rfid</code></td><td>Graba el chip de una etiqueta RFID (no se dibuja). <code>formato</code> hex / texto · <code>banco</code> epc / usuario · <code>bloquear</code> · <code>intentos</code> etiquetas a probar si falla (3). No lleva <code>@</code>.</td><td><code>rfid "3034257BF7194E4000001A85"</code></td></tr>
           <tr><td><code>qr</code></td><td><code>tam</code> lado aproximado (20) · <code>nivel</code> L / M / Q / H</td><td><code>qr "https://mi.sitio" @ 70,30 tam 25</code></td></tr>
         </table></div>
 
@@ -418,6 +421,9 @@ main {
           <tr><td><code>zebra/E:ARCHIVO.TTF</code></td><td>Cualquier fuente instalada en la impresora (ej. <code>zebra/E:TT0003M_.TTF</code>, Swiss 721)</td><td>Usa <code>^A@</code>; vista previa aproximada</td></tr>
         </table></div>
 
+        <h2>RFID</h2>
+        <p>Necesitas una impresora Zebra con RFID (por ejemplo las series ZT400R, ZT600R o ZD500R/ZD621R) y haber calibrado el RFID una vez desde la impresora. Por defecto <code>rfid</code> escribe el EPC en hex; el EPC más común mide 96 bits (24 caracteres). Si la grabación falla, la impresora marca la etiqueta con VOID y prueba con la siguiente. <code>bloquear</code> deja el dato protegido contra cambios: úsalo solo cuando estés seguro. La vista previa y Labelary no simulan la grabación.</p>
+
         <h2>Posición</h2>
         <p><code>@ x,y</code> marca la esquina superior izquierda del elemento. Escribe <code>centro</code> en lugar de x para centrar el elemento en el ancho de la etiqueta: <code>@ centro,8</code>.</p>
 
@@ -436,6 +442,7 @@ main {
           <tr><td><code>circulo</code></td><td><code>^GC</code></td></tr>
           <tr><td><code>barras</code></td><td><code>^BY ^BC</code>, <code>^B3</code>, <code>^BE</code></td></tr>
           <tr><td><code>qr</code></td><td><code>^BQN</code></td></tr>
+          <tr><td><code>rfid</code></td><td><code>^RS8</code> y <code>^RFW</code> (o <code>^RFL</code> con <code>bloquear</code>)</td></tr>
           <tr><td><code>copias</code></td><td><code>^PQ</code></td></tr>
         </table></div>
         <h2>Aviso de marcas</h2>
@@ -501,6 +508,22 @@ linea @ 23,19.5 a 46,19.5 grosor 0.3
 texto "No retirar" @ 23,21 tam 2.6
 texto "este sello" @ 23,24 tam 2.6
 `,
+  rfid: `// Etiqueta RFID 100 x 50 mm (requiere impresora Zebra con RFID)
+etiqueta 100x50 densidad 203
+fuente legible
+
+var epc = "3034257BF7194E4000001A85"
+var sku = "CAJ-0042"
+
+rfid "{epc}"                                   // graba el EPC del tag (96 bits)
+rfid "Bodega Quilicura" banco usuario formato texto   // solo si el tag tiene memoria de usuario
+
+texto "ACTIVO RFID" @ 4,3 tam 5 negrita
+texto "SKU {sku}" @ 4,10 tam 4
+texto "EPC {epc}" @ 4,16 tam 2.6 fuente mono
+barras "{sku}" @ 4,22 alto 12 modulo 0.3
+qr "{epc}" @ 76,6 tam 20
+`,
   credencial: `// Credencial 86 x 54 mm (tamaño tarjeta)
 etiqueta 86x54 densidad 300
 
@@ -541,7 +564,7 @@ function sugerir(w, lista) {
 }
 
 /* ================== Lenguaje ================== */
-const ORDENES = ["etiqueta", "densidad", "copias", "fuente", "var", "texto", "caja", "linea", "circulo", "barras", "qr"];
+const ORDENES = ["etiqueta", "densidad", "copias", "fuente", "var", "texto", "caja", "linea", "circulo", "barras", "qr", "rfid"];
 const ALIAS = { "codigo": "barras", "codigobarras": "barras", "rectangulo": "caja", "cuadro": "caja", "circ": "circulo", "variable": "var", "dpi": "densidad", "txt": "texto" };
 
 // Propiedades por orden: tipo num | int | flag | enum:[...]
@@ -552,7 +575,8 @@ const PROPS = {
   linea:  { grosor: "num" },
   circulo:{ diam: "num", borde: "num", relleno: "flag" },
   barras: { alto: "num", tipo: ["code128", "code39", "ean13"], modulo: "num", sintexto: "flag", sin_texto: "flag" },
-  qr:     { tam: "num", nivel: ["l", "m", "q", "h"] }
+  qr:     { tam: "num", nivel: ["l", "m", "q", "h"] },
+  rfid:   { formato: ["hex", "texto"], banco: ["epc", "usuario"], bloquear: "flag", intentos: "int" }
 };
 const PROP_ALIAS = { "tamano": "tam", "tamaño": "tam", "size": "tam", "bold": "negrita", "centrado": "centro", "rotar": "girar", "rotacion": "girar", "invertido": "blanco", "grueso": "grosor", "diametro": "diam", "lleno": "relleno", "relleno": "relleno", "redondeo": "radio", "barra": "modulo" };
 
@@ -616,7 +640,7 @@ function leerCadena(tok, vars) {
 }
 
 function analizar(codigo) {
-  const doc = { ancho: 100, alto: 60, dpi: 203, copias: 1, elems: [], diag: [], tieneEtiqueta: false };
+  const doc = { ancho: 100, alto: 60, dpi: 203, copias: 1, elems: [], rfid: [], diag: [], tieneEtiqueta: false };
   const vars = fechaHoy();
   const lineas = codigo.split("\n");
   lineas.forEach((texto, i) => {
@@ -668,13 +692,13 @@ function analizar(codigo) {
         [doc.ancho, doc.alto] = dim;
         doc.tieneEtiqueta = true;
       }
-      if (["texto", "barras", "qr"].includes(cmd)) {
+      if (["texto", "barras", "qr", "rfid"].includes(cmd)) {
         const v = next();
         if (!v || v.t !== "str") throw new ErrNova(`${cmd} necesita su contenido entre comillas, por ejemplo: ${cmd} "ABC" @ 5,5`);
         el.valor = leerCadena(v, vars);
         if (!el.valor.length) throw new ErrNova(`El contenido de ${cmd} está vacío.`);
       }
-      if (cmd !== "etiqueta") {
+      if (cmd !== "etiqueta" && cmd !== "rfid") {
         const at = next();
         if (!at || at.t !== "@") throw new ErrNova(`Falta la posición. Escribe @ x,y después de ${cmd}${el.valor !== undefined ? " y su texto" : ""}.`);
         const xt = next();
@@ -723,6 +747,23 @@ function analizar(codigo) {
         if (el.p.copias) doc.copias = el.p.copias;
         return;
       }
+      if (cmd === "rfid") {
+        const fmt = el.p.formato || "hex", banco = el.p.banco || "epc";
+        let dato = el.valor;
+        if (fmt === "hex") {
+          dato = dato.replace(/[\s:-]/g, "").toUpperCase();
+          if (!/^[0-9A-F]+$/.test(dato)) throw new ErrNova("El dato RFID en hex solo puede tener 0-9 y A-F. Para texto normal agrega: formato texto");
+          if (dato.length % 4) throw new ErrNova(`Los tags graban de a 2 bytes (4 caracteres hex). «${dato}» tiene ${dato.length}; completa con ceros a la derecha.`);
+          if (banco === "epc" && dato.length !== 24) doc.diag.push({ ln, tipo: "wrn", msg: `El EPC tiene ${dato.length * 4} bits. Lo más común son 96 bits (24 caracteres hex); revisa que tu tag lo admita.` });
+        } else {
+          if (/[^\x20-\x7e]/.test(dato)) throw new ErrNova("En formato texto el RFID solo admite caracteres ASCII (sin tildes ni ñ).");
+          if (banco === "epc" && dato.length > 12) throw new ErrNova("En el banco EPC caben 12 caracteres de texto (96 bits). Acorta el texto o usa: banco usuario");
+        }
+        const bytes = fmt === "hex" ? dato.length / 2 : dato.length;
+        if (doc.rfid.some(r => r.banco === banco)) doc.diag.push({ ln, tipo: "wrn", msg: `Ya hay un rfid en el banco ${banco}: esta línea lo sobrescribe en el mismo tag.` });
+        doc.rfid.push({ ln, fmt, banco, dato, bytes, bloquear: !!el.p.bloquear, intentos: el.p.intentos });
+        return;
+      }
       if (cmd === "caja" && !(el.p.ancho > 0 && el.p.alto > 0)) throw new ErrNova("La caja necesita tamaño: caja @ x,y 40x20");
       if (cmd === "circulo") {
         if (!el.p.diam) el.p.diam = el.p.ancho || 0;
@@ -745,6 +786,8 @@ function analizar(codigo) {
       else { doc.diag.push({ ln, tipo: "err", msg: "Error interno: " + e.message }); console.error(e); }
     }
   });
+  if (doc.rfid.length && doc.copias > 1)
+    doc.diag.push({ ln: doc.rfid[0].ln, tipo: "wrn", msg: `Con ${doc.copias} copias, todos los tags quedarán con el mismo dato RFID. Para numerar cada tag, genera una etiqueta por dato.` });
   if (!doc.tieneEtiqueta) doc.diag.unshift({ ln: 1, tipo: "wrn", msg: "Sin «etiqueta AxB»: uso 100x60 mm por defecto." });
   return doc;
 }
@@ -1084,6 +1127,17 @@ function zplCampo(s) {
 function aZPL(doc, comp) {
   const L = [];
   L.push("^XA", "^CI28", `^PW${comp.W}`, `^LL${comp.H}`, "^LH0,0");
+  if (doc.rfid.length) {
+    // ^RS8: tags Gen 2; el 4.º parámetro es cuántas etiquetas intenta si falla la grabación (imprime VOID)
+    const intentos = Math.max(1, Math.min(10, doc.rfid.find(r => r.intentos)?.intentos || 3));
+    L.push("^FX RFID", `^RS8,,,${intentos}`);
+    for (const r of doc.rfid) {
+      const op = r.bloquear ? "L" : "W", f = r.fmt === "hex" ? "H" : "A";
+      const destino = r.banco === "usuario" ? `,0,${r.bytes},3` : "";
+      const { fh, d } = zplCampo(r.dato);
+      L.push(`^FX linea ${r.ln}: rfid ${r.banco}`, `^RF${op},${f}${destino}${fh}^FD${d}^FS`);
+    }
+  }
   for (const it of comp.items) {
     L.push(`^FX linea ${it.ln}: ${it.el.cmd}`);
     if (it.tipo === "texto" && !it.zebra) {
@@ -1260,7 +1314,8 @@ function actualizar() {
   $("tam").textContent = `${doc.ancho} × ${doc.alto} mm · ${comp.W} × ${comp.H} pt`;
   $("dpiInfo").textContent = `${doc.dpi} ppp${doc.copias > 1 ? ` · ${doc.copias} copias` : ""}`;
   $("nEl").textContent = comp.items.length;
-  $("dims").textContent = `${doc.ancho} × ${doc.alto} mm`;
+  $("dims").textContent = `${doc.ancho} × ${doc.alto} mm${doc.rfid.length ? " · con RFID" : ""}`;
+  $("rfidInfo").textContent = doc.rfid.length ? doc.rfid.map(r => `${r.banco.toUpperCase()} ${r.bytes * 8} bits${r.bloquear ? " (bloqueado)" : ""}`).join(" + ") : "no";
   aplicarZoom();
   marcarSeleccion();
   try { localStorage.setItem("nova-borrador", codigo); } catch (e) {}
