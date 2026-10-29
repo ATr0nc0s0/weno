@@ -322,6 +322,7 @@ main {
         <option value="rfid">Activo con RFID</option>
         <option value="rfid4419">RFID 44 × 19 mm</option>
         <option value="serie">Serie RFID correlativa (3)</option>
+        <option value="serie4419">RFID 44 × 19 correlativo</option>
       </select>
     </label>
     <button id="copiarNova" class="btn" type="button">Copiar código WENO</button>
@@ -568,6 +569,25 @@ texto "ETIQUETA {nro} DE {total}" @ 3,2 tam 3 negrita
 texto "EPC" @ 3,6.5 tam 2.2
 texto "{epc}" @ 3,9.5 tam 2.6 fuente mono
 barras "{epc}" @ centro,14 alto 10 modulo 0.17 sintexto
+`,
+  serie4419: `// Plantilla RFID 44 x 19 mm con EPC correlativo en hex.
+// EPC (96 bits) = prefijo fijo (16 hex) + correlativo (8 hex).
+// El código de barras lleva solo el correlativo para que quepa en 44 mm.
+etiqueta 44x19 densidad 300
+fuente legible
+
+var prefijo = "3034257BF7194E40"
+serie corr desde "00001A85" cantidad 3 hex
+
+rfid "{prefijo}{corr}"
+
+texto "N° {corr}" @ 1.5,1.2 tam 3.4 negrita
+texto "Etiqueta {nro} de {total}" @ 1.5,5 tam 2.2
+barras "{corr}" @ 1.5,8.2 alto 5.8 modulo 0.17 sintexto
+texto "{prefijo}{corr}" @ 1.5,15.3 tam 1.8 fuente mono
+
+qr "{prefijo}{corr}" @ 31.5,1.5 tam 11
+texto "RFID" @ 31.5,13.4 tam 2 ancho 10.6 centro negrita
 `,
   credencial: `// Credencial 86 x 54 mm (tamaño tarjeta)
 etiqueta 86x54 densidad 300
