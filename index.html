@@ -155,7 +155,7 @@ main {
 .panel-img[hidden] { display: none; }
 .panel-img-cab { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .panel-img-nota { color: var(--muted); font-size: 12.5px; margin: 8px 0 10px; }
-.img-fila { display: grid; grid-template-columns: 48px 1fr auto auto; gap: 10px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
+.img-fila { display: grid; grid-template-columns: 48px 1fr auto auto auto; gap: 8px; align-items: center; padding: 6px 0; border-top: 1px solid var(--line); }
 .img-fila img { width: 48px; height: 48px; object-fit: contain; background: var(--paper); border-radius: 4px; }
 .img-info { display: flex; flex-direction: column; min-width: 0; }
 .img-info b { font-family: var(--mono); font-size: 13px; overflow-wrap: anywhere; }
@@ -525,7 +525,7 @@ label.btn { display: inline-flex; align-items: center; }
           <tr><td><code>linea</code></td><td><code>a x,y</code> punto final · <code>grosor</code> (0.3). Horizontal, vertical o diagonal.</td><td><code>linea @ 2,20 a 98,20 grosor 0.4</code></td></tr>
           <tr><td><code>circulo</code></td><td><code>diam</code> diámetro · <code>borde</code> · <code>relleno</code></td><td><code>circulo @ 80,5 diam 12 relleno</code></td></tr>
           <tr><td><code>barras</code></td><td><code>tipo</code> code128 / code39 / ean13 · <code>alto</code> (12) · <code>modulo</code> barra fina en mm (0.25) · <code>sintexto</code></td><td><code>barras "ABC-123" @ 5,30 alto 15</code></td></tr>
-          <tr><td><code>imagen</code></td><td>Pone una imagen de la biblioteca (botón «Imágenes» o arrastrándola al editor). <code>ancho</code> o <code>alto</code> en mm (el otro se ajusta solo; 20 mm de ancho por defecto) · <code>umbral</code> 1-99 (50) · <code>tramado</code> para fotos · <code>invertir</code></td><td><code>imagen "weno" @ 5,5 ancho 15</code></td></tr>
+          <tr><td><code>imagen</code></td><td>Pone una imagen de la biblioteca (botón «Imágenes» o arrastrándola al editor). <code>ancho</code> o <code>alto</code> en mm (el otro se ajusta solo; 20 mm de ancho por defecto) · <code>umbral</code> 1-99 (50) · <code>tramado</code> para fotos · <code>invertir</code> · <code>sinfondo</code> quita el fondo · <code>tolerancia</code> 1-60 (12)</td><td><code>imagen "weno" @ 5,5 ancho 15</code></td></tr>
           <tr><td><code>rfid</code></td><td>Graba el chip de una etiqueta RFID (no se dibuja). <code>formato</code> hex / texto · <code>banco</code> epc / usuario · <code>bloquear clave "1234ABCD"</code> o <code>bloquear permanente</code> · <code>intentos</code> etiquetas a probar si falla (3). No lleva <code>@</code>.</td><td><code>rfid "3034257BF7194E4000001A85"</code></td></tr>
           <tr><td><code>qr</code></td><td><code>tam</code> lado aproximado (20) · <code>nivel</code> L / M / Q / H</td><td><code>qr "https://mi.sitio" @ 70,30 tam 25</code></td></tr>
         </table></div>
@@ -566,7 +566,7 @@ label.btn { display: inline-flex; align-items: center; }
         <p>Sensor transmisivo: etiquetas con espacio o muesca entre ellas. Sensor reflectivo: papel con marca negra en el reverso. Después de cambiar papel o sensor, conviene <code>calibrar</code>.</p>
 
         <h2>Imágenes</h2>
-        <p>Las impresoras térmicas solo imprimen negro. WENO convierte la imagen en puntos negros al tamaño exacto de tu impresora. Al subir una imagen, WENO la convierte sola: si es un logo o dibujo la deja en blanco y negro puro, eligiendo el mejor corte entre claro y oscuro; si es una foto la deja en escala de grises y la imprime con <code>tramado</code> (grises con puntitos). Si una foto la quieres en negro puro, agrega <code>umbral 50</code>; si un logo queda muy grueso o muy fino, ajusta <code>umbral</code>. Las imágenes subidas quedan guardadas en este navegador: si compartes tu código <code>.weno</code>, comparte también la imagen con el mismo nombre.</p>
+        <p>Las impresoras térmicas solo imprimen negro. WENO convierte la imagen en puntos negros al tamaño exacto de tu impresora. Al subir una imagen, WENO la convierte sola: si es un logo o dibujo la deja en blanco y negro puro, eligiendo el mejor corte entre claro y oscuro; si es una foto la deja en escala de grises y la imprime con <code>tramado</code> (grises con puntitos). Si una foto la quieres en negro puro, agrega <code>umbral 50</code>; si un logo queda muy grueso o muy fino, ajusta <code>umbral</code>. Para quitar el fondo agrega <code>sinfondo</code>: WENO toma el tono del borde de la imagen y deja en blanco todo lo que esté unido al borde y se parezca a ese tono. Si queda fondo, sube <code>tolerancia</code> (por ejemplo 25); si se borra parte del dibujo, bájala. Si tu logo es claro sobre fondo oscuro, usa <code>invertir</code> en vez de <code>sinfondo</code>. Las imágenes subidas quedan guardadas en este navegador: si compartes tu código <code>.weno</code>, comparte también la imagen con el mismo nombre.</p>
 
         <h2>RFID</h2>
         <p>Necesitas una impresora Zebra con RFID (por ejemplo las series ZT400R, ZT600R o ZD500R/ZD621R) y haber calibrado el RFID una vez desde la impresora. Por defecto <code>rfid</code> escribe el EPC en hex; el EPC más común mide 96 bits (24 caracteres). Si la grabación falla, la impresora marca la etiqueta con VOID y prueba con la siguiente. Para proteger el dato hay dos formas: <code>bloquear clave "1234ABCD"</code> lo bloquea con una clave de 8 caracteres hex (se puede desbloquear con esa clave, así que guárdala), y <code>bloquear permanente</code> lo bloquea para siempre. El bloqueo usa <code>^RLM</code>, de las impresoras RFID Link-OS; las impresoras RFID más antiguas usan <code>^RZ</code>. La vista previa y Labelary no simulan la grabación.</p>
@@ -822,7 +822,7 @@ const PROPS = {
   circulo:{ diam: "num", borde: "num", relleno: "flag" },
   barras: { alto: "num", tipo: ["code128", "code39", "ean13"], modulo: "num", sintexto: "flag", sin_texto: "flag" },
   qr:     { tam: "num", nivel: ["l", "m", "q", "h"] },
-  imagen: { ancho: "num", alto: "num", umbral: "num", tramado: "flag", invertir: "flag" },
+  imagen: { ancho: "num", alto: "num", umbral: "num", tramado: "flag", invertir: "flag", sinfondo: "flag", sin_fondo: "flag", tolerancia: "num" },
   rfid:   { formato: ["hex", "texto"], banco: ["epc", "usuario"], bloquear: "flag", clave: "clave", permanente: "flag", intentos: "int" }
 };
 const PROP_ALIAS = { "tamano": "tam", "tamaño": "tam", "size": "tam", "bold": "negrita", "centrado": "centro", "rotar": "girar", "rotacion": "girar", "invertido": "blanco", "grueso": "grosor", "diametro": "diam", "lleno": "relleno", "relleno": "relleno", "redondeo": "radio", "barra": "modulo" };
@@ -1265,7 +1265,9 @@ function compilar(doc, ctx) {
         const w = Math.max(1, D(wmm)), h = Math.max(1, D(hmm));
         const umbral = Math.max(1, Math.min(99, el.p.umbral ?? 50));
         const tramado = !!el.p.tramado || (ref.tipo === "foto" && el.p.umbral == null);
-        const bits = rasterImagen(ref.img, w, h, umbral, tramado, !!el.p.invertir);
+        const sinFondo = !!(el.p.sinfondo || el.p.sin_fondo || el.p.tolerancia != null);
+        const tol = Math.max(1, Math.min(60, el.p.tolerancia ?? 12));
+        const bits = rasterImagen(ref.img, w, h, umbral, tramado, !!el.p.invertir, sinFondo, tol);
         const x = el.x === "centro" ? Math.round((W - w) / 2) : D(el.x);
         Object.assign(it, { tipo: "imagen", x, y: D(el.y), w, h, bits, cv: lienzoBits(bits, w, h), bw: w, bh: h });
       } else if (el.cmd === "qr") {
@@ -1602,7 +1604,7 @@ function empaquetar(W, H, negro) {
   return { total: bpr * H, bpr, datos: filas.join("") };
 }
 // Imagen a blanco y negro, al tamaño exacto en puntos de la impresora
-function rasterImagen(img, w, h, umbral, tramado, invertir) {
+function rasterImagen(img, w, h, umbral, tramado, invertir, sinFondo, tol) {
   const c2 = document.createElement("canvas"); c2.width = w; c2.height = h;
   const c = c2.getContext("2d");
   c.fillStyle = "#fff"; c.fillRect(0, 0, w, h);
@@ -1611,6 +1613,7 @@ function rasterImagen(img, w, h, umbral, tramado, invertir) {
   const d = c.getImageData(0, 0, w, h).data;
   const lum = new Float32Array(w * h);
   for (let i = 0; i < w * h; i++) lum[i] = 0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2];
+  if (sinFondo) quitarFondo(lum, w, h, 255 * tol / 100);
   const corte = 255 * umbral / 100;
   const bits = new Uint8Array(w * h);
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
@@ -1628,6 +1631,25 @@ function rasterImagen(img, w, h, umbral, tramado, invertir) {
     }
   }
   return bits;
+}
+// Quita el fondo: toma el tono más común del borde y pinta de blanco todo lo que esté
+// conectado al borde y se parezca a ese tono (como un balde de pintura desde las orillas).
+function quitarFondo(lum, w, h, tol) {
+  const borde = [];
+  for (let x = 0; x < w; x++) { borde.push(x, (h - 1) * w + x); }
+  for (let y = 1; y < h - 1; y++) { borde.push(y * w, y * w + w - 1); }
+  const vals = borde.map(i => lum[i]).sort((a, b) => a - b);
+  const fondo = vals[Math.floor(vals.length / 2)];
+  const visto = new Uint8Array(w * h), cola = new Int32Array(w * h);
+  let ini = 0, fin = 0;
+  for (const i of borde) if (!visto[i] && Math.abs(lum[i] - fondo) <= tol) { visto[i] = 1; cola[fin++] = i; }
+  while (ini < fin) {
+    const i = cola[ini++], x = i % w;
+    lum[i] = 255;
+    const vecinos = [x > 0 ? i - 1 : -1, x < w - 1 ? i + 1 : -1, i - w, i + w];
+    for (const j of vecinos) if (j >= 0 && j < w * h && !visto[j] && Math.abs(lum[j] - fondo) <= tol) { visto[j] = 1; cola[fin++] = j; }
+  }
+  return fondo;
 }
 function lienzoBits(bits, w, h) {
   const c2 = document.createElement("canvas"); c2.width = w; c2.height = h;
@@ -1962,6 +1984,7 @@ function pintarBiblioteca() {
       <img src="${v.src}" alt="">
       <div class="img-info"><b>${esc(k)}</b><span>${v.img.naturalWidth ? `${v.img.naturalWidth} × ${v.img.naturalHeight} px` : "cargando…"}${v.tipo === "foto" ? " · foto, escala de grises" : v.tipo === "logo" ? " · blanco y negro" : ""}${v.propia ? "" : " · incluida"}</span></div>
       <button class="btn mini" type="button" data-ins="${esc(k)}">Insertar</button>
+      <button class="btn mini" type="button" data-ins="${esc(k)}" data-sinfondo="1" title="Insertar quitando el fondo">Sin fondo</button>
       ${v.propia ? `<button class="btn mini" type="button" data-del="${esc(k)}" aria-label="Borrar ${esc(k)}">Borrar</button>` : ""}
     </div>`).join("");
 }
@@ -1993,6 +2016,8 @@ const DOC_PROP = {
   umbral: ["Qué tan oscuro debe ser un punto para imprimirse negro, de 1 a 99 (50). Sube para más negro.", "umbral 50"],
   tramado: ["Simula grises con puntitos. Ideal para fotos.", "tramado"],
   invertir: ["Cambia negro por blanco.", "invertir"],
+  sinfondo: ["Quita el fondo de la imagen: lo que la rodea desde los bordes no se imprime.", "sinfondo"],
+  tolerancia: ["Cuánto se puede parecer un tono al fondo para quitarlo, de 1 a 60 (12). Súbelo si queda fondo; bájalo si se come parte del dibujo.", "tolerancia 12"],
   lineas: ["Máximo de líneas dentro del ancho.", "lineas 2"],
   centro: ["Centra el texto dentro de su ancho.", "centro"],
   derecha: ["Alinea el texto a la derecha.", "derecha"],
@@ -2279,7 +2304,8 @@ function explicarLinea(linea) {
       const tam = p.ancho ? `de ${mm(p.ancho)} de ancho` : p.alto ? `de ${mm(p.alto)} de alto` : "de 20 mm de ancho (por defecto)";
       const ok = imagenes[val.toLowerCase()];
       const conTramado = p.tramado || (ok?.tipo === "foto" && !p.umbral);
-      return `Pone la imagen <b>«${esc(val)}»</b> ${donde}, ${tam}, en blanco y negro${conTramado ? " con tramado (grises con puntitos)" : ""}${p.invertir ? ", invertida" : ""}.${ok ? (ok.tipo === "foto" ? " Es una foto: se imprime con tramado; si prefieres negro puro, agrega <code>umbral 50</code>." : "") : " <b>Esa imagen no está en la biblioteca</b>: súbela con el botón «Imágenes»."}`;
+      const fondo = (p.sinfondo || p.sin_fondo || p.tolerancia) ? `, <b>sin fondo</b>${p.tolerancia ? ` (tolerancia ${esc(p.tolerancia)})` : ""}` : "";
+      return `Pone la imagen <b>«${esc(val)}»</b> ${donde}, ${tam}, en blanco y negro${conTramado ? " con tramado (grises con puntitos)" : ""}${fondo}${p.invertir ? ", invertida" : ""}.${ok ? (ok.tipo === "foto" ? " Es una foto: se imprime con tramado; si prefieres negro puro, agrega <code>umbral 50</code>." : "") : " <b>Esa imagen no está en la biblioteca</b>: súbela con el botón «Imágenes»."}`;
     }
     case "rfid": {
       let bloq = "";
@@ -2663,7 +2689,7 @@ document.addEventListener("click", e => {
 $("imgArchivo").addEventListener("change", e => { agregarArchivos([...e.target.files], true); e.target.value = ""; });
 $("imgLista").addEventListener("click", e => {
   const ins = e.target.closest("[data-ins]"), del = e.target.closest("[data-del]");
-  if (ins) { insertarLinea(`imagen "${ins.dataset.ins}" @ 5,5 ancho 20`); $("panelImg").hidden = true; src.focus(); }
+  if (ins) { insertarLinea(`imagen "${ins.dataset.ins}" @ 5,5 ancho 20${ins.dataset.sinfondo ? " sinfondo" : ""}`); $("panelImg").hidden = true; src.focus(); }
   if (del) { delete imagenes[del.dataset.del]; guardarBiblioteca(); pintarBiblioteca(); actualizar(); }
 });
 const zonaEditor = document.querySelector(".editor");
