@@ -285,6 +285,31 @@ label.btn { display: inline-flex; align-items: center; }
   box-shadow: 0 0 0 1px rgba(255,255,255,.06), 0 18px 50px rgba(0,0,0,.55);
 }
 .paper-wrap canvas.termico { image-rendering: pixelated; }
+.paper-wrap canvas { touch-action: none; }
+.paper-wrap canvas.sobre { cursor: move; }
+.paper-wrap canvas:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.asa {
+  position: absolute;
+  width: 12px; height: 12px;
+  margin: -6px 0 0 -6px;
+  background: var(--accent);
+  border: 2px solid var(--paper);
+  border-radius: 3px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.5);
+  display: none;
+  touch-action: none;
+  z-index: 5;
+}
+.asa.se { cursor: nwse-resize; }
+.asa.pt { cursor: crosshair; border-radius: 50%; }
+.medida {
+  position: absolute;
+  transform: translate(-50%, -130%);
+  background: var(--accent); color: #1a0d02;
+  font: 600 11px var(--mono);
+  padding: 2px 6px; border-radius: 4px;
+  white-space: nowrap; pointer-events: none; display: none; z-index: 6;
+}
 .paper-wrap .hl {
   position: absolute;
   border: 1.5px dashed var(--accent);
@@ -310,9 +335,13 @@ label.btn { display: inline-flex; align-items: center; }
   color: var(--muted);
   background: var(--panel);
   flex-shrink: 0;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .statusbar b { color: var(--ink); font-weight: 600; }
+.statusbar #pos { display: inline-block; min-width: 20ch; }
 
 /* ZPL */
 .zpl {
@@ -447,7 +476,11 @@ label.btn { display: inline-flex; align-items: center; }
       <div class="stage" id="stage">
         <div class="paper-wrap" id="paperWrap">
           <div class="dims" id="dims"></div>
-          <canvas id="cv" width="800" height="480"></canvas>
+          <canvas id="cv" width="800" height="480" tabindex="0" aria-label="Vista previa editable: arrastra para mover, usa la esquina naranja para cambiar el tamaño, flechas para mover el elemento elegido"></canvas>
+          <div class="asa se" id="asaSE" title="Arrastra para cambiar el tamaño"></div>
+          <div class="asa pt" id="asaP1" title="Inicio de la línea"></div>
+          <div class="asa pt" id="asaP2" title="Fin de la línea"></div>
+          <div class="medida" id="medida"></div>
           <div class="hl" id="hlBox"></div>
         </div>
       </div>
@@ -519,6 +552,9 @@ label.btn { display: inline-flex; align-items: center; }
 
         <h2>RFID</h2>
         <p>Necesitas una impresora Zebra con RFID (por ejemplo las series ZT400R, ZT600R o ZD500R/ZD621R) y haber calibrado el RFID una vez desde la impresora. Por defecto <code>rfid</code> escribe el EPC en hex; el EPC más común mide 96 bits (24 caracteres). Si la grabación falla, la impresora marca la etiqueta con VOID y prueba con la siguiente. Para proteger el dato hay dos formas: <code>bloquear clave "1234ABCD"</code> lo bloquea con una clave de 8 caracteres hex (se puede desbloquear con esa clave, así que guárdala), y <code>bloquear permanente</code> lo bloquea para siempre. El bloqueo usa <code>^RLM</code>, de las impresoras RFID Link-OS; las impresoras RFID más antiguas usan <code>^RZ</code>. La vista previa y Labelary no simulan la grabación.</p>
+
+        <h2>Editar en la vista previa</h2>
+        <p>Arrastra cualquier elemento para moverlo y usa el cuadrito naranja de la esquina para cambiar su tamaño; en las líneas, arrastra sus extremos. El código se actualiza solo. Se ajusta cada 0,5 mm: mantén <b>Alt</b> para 0,1 mm, y <b>Shift</b> en una línea para dejarla recta. Con un elemento elegido, las flechas lo mueven 0,5 mm (Shift: 5 mm). <b>Ctrl+Z</b> en el editor deshace el cambio.</p>
 
         <h2>Posición</h2>
         <p><code>@ x,y</code> marca la esquina superior izquierda del elemento. Escribe <code>centro</code> en lugar de x para centrar el elemento en el ancho de la etiqueta: <code>@ centro,8</code>.</p>
@@ -1640,6 +1676,8 @@ function marcarSeleccion() {
   const ln = lineaCursor();
   const it = ultimo.comp.items.find(i => i.ln === ln);
   [...gutter.children].forEach((d, i) => d.classList.toggle("cur", i + 1 === ln));
+  const asas = ["asaSE", "asaP1", "asaP2"].map($);
+  asas.forEach(a => a.style.display = "none");
   if (!it) { box.style.display = "none"; return; }
   const s = escala(), pad = 3;
   box.style.display = "block";
@@ -1647,6 +1685,9 @@ function marcarSeleccion() {
   box.style.top = (it.y * s - pad) + "px";
   box.style.width = (Math.max(2, it.bw) * s + pad * 2) + "px";
   box.style.height = (Math.max(2, it.bh) * s + pad * 2) + "px";
+  const pon = (a, x, y) => { a.style.display = "block"; a.style.left = (x * s) + "px"; a.style.top = (y * s) + "px"; };
+  if (it.tipo === "linea") { pon(asas[1], it.x1, it.y1); pon(asas[2], it.x2, it.y2); }
+  else if (!(it.tipo === "texto" && it.rot !== "0")) pon(asas[0], it.x + it.bw, it.y + it.bh);
 }
 
 /* ================== Biblioteca de imágenes ================== */
@@ -2046,7 +2087,7 @@ let timer = null;
 src.addEventListener("input", e => {
   clearTimeout(timer); timer = setTimeout(actualizar, 90); hl.innerHTML = resaltar(src.value);
   actualizarAyuda();
-  if (e.inputType && e.inputType.startsWith("insert")) abrirSugerencias(false);
+  if (e.inputType && e.inputType.startsWith("insert") && !editandoVisual) abrirSugerencias(false);
   else if (e.inputType && e.inputType.startsWith("delete") && sugBox.classList.contains("on")) abrirSugerencias(false);
 });
 src.addEventListener("scroll", () => { hl.scrollTop = src.scrollTop; hl.scrollLeft = src.scrollLeft; gutter.scrollTop = src.scrollTop; });
@@ -2085,17 +2126,243 @@ cv.addEventListener("mousemove", e => {
   $("pos").textContent = `x ${((e.clientX - r.left) * kx).toFixed(1)} · y ${((e.clientY - r.top) * ky).toFixed(1)} mm`;
 });
 cv.addEventListener("mouseleave", () => { $("pos").textContent = "–"; });
-cv.addEventListener("click", e => {
-  // Clic en la etiqueta: lleva el cursor a la línea del elemento
-  if (!ultimo) return;
+/* ================== Edición visual en la vista previa ================== */
+// Reescribe partes de una línea de código sin tocar el resto (comentarios, «po», orden de propiedades)
+const fmtMM = v => String(Math.round(v * 100) / 100);
+function reemplazar(linea, cambios) {
+  cambios.sort((a, b) => b.s - a.s);
+  for (const c of cambios) linea = linea.slice(0, c.s) + c.txt + linea.slice(c.e);
+  return linea;
+}
+const finTok = t => t.s + t.v.length;
+function puntoInsercion(linea, toks) {
+  const com = toks.find(t => t.t === "com");
+  const reales = toks.filter(t => t.t !== "com");
+  const ult = reales[reales.length - 1];
+  if (reales.length > 1 && ult.t === "word" && norm(ult.v) === "po") return ult.s - 1;
+  let fin = com ? com.s : linea.length;
+  while (fin > 0 && linea[fin - 1] === " ") fin--;
+  return fin;
+}
+function fijarPos(linea, x, y) {
+  const t = tokenizar(linea), i = t.findIndex(k => k.t === "@");
+  if (i < 0 || !t[i + 1] || t[i + 2]?.t !== "," || !t[i + 3]) return linea;
+  return reemplazar(linea, [
+    { s: t[i + 1].s, e: finTok(t[i + 1]), txt: x === "centro" ? "centro" : fmtMM(x) },
+    { s: t[i + 3].s, e: finTok(t[i + 3]), txt: fmtMM(y) }
+  ]);
+}
+function fijarFin(linea, x2, y2) {
+  const t = tokenizar(linea), at = t.findIndex(k => k.t === "@");
+  const i = t.findIndex((k, j) => j > at && k.t === "word" && norm(k.v) === "a");
+  if (i < 0 || !t[i + 1] || t[i + 2]?.t !== "," || !t[i + 3]) return linea;
+  return reemplazar(linea, [{ s: t[i + 1].s, e: finTok(t[i + 1]), txt: fmtMM(x2) }, { s: t[i + 3].s, e: finTok(t[i + 3]), txt: fmtMM(y2) }]);
+}
+function fijarProp(linea, nombre, valor) {
+  const t = tokenizar(linea);
+  const i = t.findIndex((k, j) => j > 0 && k.t === "word" && (PROP_ALIAS[norm(k.v)] || norm(k.v)) === nombre);
+  if (i >= 0) {
+    const v = t[i + 1];
+    if (valor === null) { const fin = v && v.t === "word" && /^-?\d/.test(v.v) ? finTok(v) : finTok(t[i]); return linea.slice(0, Math.max(0, t[i].s - 1)) + linea.slice(fin); }
+    if (v && v.t === "word" && /^-?\d/.test(v.v)) return reemplazar(linea, [{ s: v.s, e: finTok(v), txt: valor }]);
+    return reemplazar(linea, [{ s: finTok(t[i]), e: finTok(t[i]), txt: " " + valor }]);
+  }
+  if (valor === null) return linea;
+  const p = puntoInsercion(linea, t);
+  return linea.slice(0, p) + ` ${nombre} ${valor}` + linea.slice(p);
+}
+function fijarDims(linea, w, h) {
+  const t = tokenizar(linea);
+  const d = t.find((k, j) => j > 0 && k.t === "word" && leerDim(k.v));
+  if (d) return reemplazar(linea, [{ s: d.s, e: finTok(d), txt: `${fmtMM(w)}x${fmtMM(h)}` }]);
+  return fijarProp(fijarProp(linea, "ancho", fmtMM(w)), "alto", fmtMM(h));
+}
+
+const asaSE = $("asaSE"), asaP1 = $("asaP1"), asaP2 = $("asaP2"), medida = $("medida");
+let arrastre = null, cuadroPend = false, editandoVisual = false;
+const aMM = d => d * 25.4 / ultimo.doc.dpi;
+function puntoEnEtiqueta(e) {
   const r = cv.getBoundingClientRect(), s = r.width / ultimo.comp.W;
-  const px = (e.clientX - r.left) / s, py = (e.clientY - r.top) / s;
-  const hit = [...ultimo.comp.items].reverse().find(i => px >= i.x - 4 && px <= i.x + i.bw + 4 && py >= i.y - 4 && py <= i.y + i.bh + 4);
-  if (!hit) return;
+  return { x: (e.clientX - r.left) / s, y: (e.clientY - r.top) / s, s };
+}
+function elementoEn(px, py, s) {
+  const tol = 5 / s; // 5 px de pantalla de tolerancia
+  return [...ultimo.comp.items].reverse().find(i => px >= i.x - tol && px <= i.x + i.bw + tol && py >= i.y - tol && py <= i.y + i.bh + tol);
+}
+function rangoLinea(ln) {
   const lines = src.value.split("\n");
-  const pos = lines.slice(0, hit.ln - 1).reduce((sum, l) => sum + l.length + 1, 0);
-  src.focus(); src.setSelectionRange(pos, pos + lines[hit.ln - 1].length);
-  marcarSeleccion();
+  const ini = lines.slice(0, ln - 1).reduce((sum, l) => sum + l.length + 1, 0);
+  return { ini, fin: ini + lines[ln - 1].length, texto: lines[ln - 1] };
+}
+function seleccionarElemento(it) {
+  const r = rangoLinea(it.ln);
+  src.setSelectionRange(r.ini, r.ini);
+  marcarSeleccion(); actualizarAyuda();
+}
+function empezarArrastre(e, modo, it) {
+  const r = rangoLinea(it.ln);
+  const pto = puntoEnEtiqueta(e);
+  arrastre = { modo, ln: it.ln, original: r.texto, valorInicial: src.value, x0: pto.x, y0: pto.y, it: Object.assign({}, it), el: it.el, nueva: r.texto };
+  try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
+  e.preventDefault();
+}
+function lineaArrastrada(e) {
+  const a = arrastre, it = a.it, el = a.el;
+  const pto = puntoEnEtiqueta(e);
+  const paso = e.altKey ? 0.1 : 0.5; // Alt: ajuste fino
+  const snap = v => Math.round(v / paso) * paso;
+  const dx = aMM(pto.x - a.x0), dy = aMM(pto.y - a.y0);
+  let ln = a.original, info = "";
+  if (a.modo === "mover") {
+    if (el.cmd === "linea") {
+      const nx1 = snap(el.x + dx), ny1 = snap(el.y + dy);
+      const ddx = nx1 - el.x, ddy = ny1 - el.y;
+      ln = fijarFin(fijarPos(ln, nx1, ny1), el.x2 + ddx, el.y2 + ddy);
+      info = `${fmtMM(nx1)}, ${fmtMM(ny1)} mm`;
+    } else {
+      const x0 = el.x === "centro" ? aMM(it.x) : el.x;
+      let nx = Math.abs(dx) < 0.3 && el.x === "centro" ? "centro" : Math.max(0, snap(x0 + dx));
+      const ny = Math.max(0, snap(el.y + dy));
+      ln = fijarPos(ln, nx, ny);
+      info = `x ${nx === "centro" ? "centro" : fmtMM(nx)} · y ${fmtMM(ny)} mm`;
+    }
+  } else if (a.modo === "p1" || a.modo === "p2") {
+    const ox = a.modo === "p1" ? el.x : el.x2, oy = a.modo === "p1" ? el.y : el.y2;
+    let nx = Math.max(0, snap(ox + dx)), ny = Math.max(0, snap(oy + dy));
+    // Shift: mantener horizontal o vertical
+    if (e.shiftKey) { const qx = a.modo === "p1" ? el.x2 : el.x, qy = a.modo === "p1" ? el.y2 : el.y; if (Math.abs(nx - qx) > Math.abs(ny - qy)) ny = qy; else nx = qx; }
+    ln = a.modo === "p1" ? fijarPos(ln, nx, ny) : fijarFin(ln, nx, ny);
+    info = `${fmtMM(nx)}, ${fmtMM(ny)} mm`;
+  } else if (a.modo === "se") {
+    const ow = aMM(it.bw), oh = aMM(it.bh);
+    const nw = Math.max(1, ow + dx), nh = Math.max(1, oh + dy);
+    const rel = Math.max(nw / ow, nh / oh), relH = nh / oh;
+    switch (el.cmd) {
+      case "caja": { const w = snap(nw), h = snap(nh); ln = fijarDims(ln, Math.max(paso, w), Math.max(paso, h)); info = `${fmtMM(w)} × ${fmtMM(h)} mm`; break; }
+      case "circulo": { const d = Math.max(paso, snap(Math.max(nw, nh))); ln = fijarProp(ln, "diam", fmtMM(d)); info = `diam ${fmtMM(d)} mm`; break; }
+      case "imagen": { const w = Math.max(paso, snap(ow * rel)); ln = fijarProp(fijarProp(ln, "alto", null), "ancho", fmtMM(w)); info = `ancho ${fmtMM(w)} mm`; break; }
+      case "qr": { const t = Math.max(paso, snap(Math.max(nw, nh))); ln = fijarProp(ln, "tam", fmtMM(t)); info = `tam ${fmtMM(t)} mm`; break; }
+      case "texto": {
+        const tam0 = el.p.tam ?? 4;
+        const t = Math.max(1, Math.round(tam0 * (el.p.ancho != null ? relH : rel) * 10) / 10);
+        ln = fijarProp(ln, "tam", fmtMM(t));
+        info = `tam ${fmtMM(t)} mm`;
+        if (el.p.ancho != null) { const w = Math.max(paso, snap(nw)); ln = fijarProp(ln, "ancho", fmtMM(w)); info += ` · ancho ${fmtMM(w)}`; }
+        break;
+      }
+      case "barras": {
+        const extra = aMM(it.bh - it.h);
+        const alto = Math.max(1, snap(nh - extra));
+        const mod0 = el.p.modulo ?? 0.25;
+        const mod = Math.max(0.1, Math.round(mod0 * (nw / ow) * 100) / 100);
+        ln = fijarProp(fijarProp(ln, "alto", fmtMM(alto)), "modulo", fmtMM(mod));
+        info = `alto ${fmtMM(alto)} · modulo ${fmtMM(mod)} mm`;
+        break;
+      }
+    }
+  }
+  return { ln, info, pto };
+}
+function aplicarArrastre(e) {
+  if (!arrastre) return;
+  const { ln, info, pto } = lineaArrastrada(e);
+  medida.style.display = "block";
+  medida.style.left = (pto.x * pto.s) + "px"; medida.style.top = (pto.y * pto.s) + "px";
+  medida.textContent = info;
+  if (ln === arrastre.nueva) return;
+  arrastre.nueva = ln;
+  const lines = arrastre.valorInicial.split("\n");
+  lines[arrastre.ln - 1] = ln;
+  const pos = src.selectionStart;
+  src.value = lines.join("\n");
+  src.setSelectionRange(Math.min(pos, src.value.length), Math.min(pos, src.value.length));
+  if (!cuadroPend) { cuadroPend = true; requestAnimationFrame(() => { cuadroPend = false; actualizar(); }); }
+}
+function terminarArrastre() {
+  if (!arrastre) return;
+  const a = arrastre; arrastre = null;
+  medida.style.display = "none";
+  if (a.nueva === a.original) return;
+  // Se deja como un solo paso de «deshacer» (Ctrl+Z) en el editor
+  src.value = a.valorInicial;
+  const r = rangoLinea(a.ln);
+  src.focus({ preventScroll: true });
+  src.setSelectionRange(r.ini, r.fin);
+  let ok = false;
+  editandoVisual = true;
+  try { ok = document.execCommand("insertText", false, a.nueva); } catch (_) {}
+  editandoVisual = false;
+  if (!ok) src.setRangeText(a.nueva, r.ini, r.fin, "end");
+  src.setSelectionRange(r.ini, r.ini);
+  actualizar(); actualizarAyuda();
+  cv.focus({ preventScroll: true });
+}
+// ¿El puntero está sobre una asa del elemento elegido? (en píxeles de pantalla)
+function asaEn(e) {
+  const it = ultimo.comp.items.find(i => i.ln === lineaCursor());
+  if (!it) return null;
+  const pto = puntoEnEtiqueta(e), s = pto.s, cerca = (x, y) => Math.hypot((pto.x - x) * s, (pto.y - y) * s) <= 10;
+  if (it.tipo === "linea") { if (cerca(it.x1, it.y1)) return { modo: "p1", it }; if (cerca(it.x2, it.y2)) return { modo: "p2", it }; return null; }
+  if (it.tipo === "texto" && it.rot !== "0") return null;
+  return cerca(it.x + it.bw, it.y + it.bh) ? { modo: "se", it } : null;
+}
+cv.addEventListener("pointerdown", e => {
+  if (!ultimo || e.button > 0) return;
+  const asa = asaEn(e);
+  if (asa) { cv.focus({ preventScroll: true }); empezarArrastre(e, asa.modo, asa.it); return; }
+  const pto = puntoEnEtiqueta(e);
+  const hit = elementoEn(pto.x, pto.y, pto.s);
+  if (!hit) return;
+  seleccionarElemento(hit);
+  cv.focus({ preventScroll: true });
+  empezarArrastre(e, "mover", hit);
+});
+for (const [asa, modo] of [[asaSE, "se"], [asaP1, "p1"], [asaP2, "p2"]]) {
+  asa.addEventListener("pointerdown", e => {
+    if (!ultimo || e.button > 0) return;
+    const it = ultimo.comp.items.find(i => i.ln === lineaCursor());
+    if (it) empezarArrastre(e, modo, it);
+  });
+  asa.addEventListener("pointermove", aplicarArrastre);
+  asa.addEventListener("pointerup", terminarArrastre);
+  asa.addEventListener("pointercancel", terminarArrastre);
+}
+cv.addEventListener("pointermove", e => {
+  if (arrastre) { aplicarArrastre(e); return; }
+  if (!ultimo) return;
+  const pto = puntoEnEtiqueta(e), asa = asaEn(e);
+  cv.style.cursor = asa ? (asa.modo === "se" ? "nwse-resize" : "crosshair") : "";
+  cv.classList.toggle("sobre", !asa && !!elementoEn(pto.x, pto.y, pto.s));
+});
+cv.addEventListener("pointerup", terminarArrastre);
+cv.addEventListener("pointercancel", terminarArrastre);
+// Flechas: mover el elemento elegido 0.5 mm (Shift: 5 mm, Alt: 0.1 mm)
+cv.addEventListener("keydown", e => {
+  const dirs = { ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] };
+  if (!dirs[e.key] || !ultimo) return;
+  const it = ultimo.comp.items.find(i => i.ln === lineaCursor());
+  if (!it) return;
+  e.preventDefault();
+  const paso = e.shiftKey ? 5 : e.altKey ? 0.1 : 0.5, [kx, ky] = dirs[e.key];
+  const el = it.el;
+  const r = rangoLinea(it.ln);
+  let ln = r.texto;
+  if (el.cmd === "linea") ln = fijarFin(fijarPos(ln, Math.max(0, el.x + kx * paso), Math.max(0, el.y + ky * paso)), Math.max(0, el.x2 + kx * paso), Math.max(0, el.y2 + ky * paso));
+  else {
+    const x0 = el.x === "centro" ? aMM(it.x) : el.x;
+    const nx = kx === 0 && el.x === "centro" ? "centro" : Math.max(0, Math.round((x0 + kx * paso) * 10) / 10);
+    ln = fijarPos(ln, nx, Math.max(0, Math.round((el.y + ky * paso) * 10) / 10));
+  }
+  if (ln === r.texto) return;
+  src.setSelectionRange(r.ini, r.fin);
+  let ok = false;
+  editandoVisual = true;
+  try { src.focus({ preventScroll: true }); ok = document.execCommand("insertText", false, ln); } catch (_) {}
+  editandoVisual = false;
+  if (!ok) src.setRangeText(ln, r.ini, r.fin, "end");
+  src.setSelectionRange(r.ini, r.ini);
+  actualizar(); actualizarAyuda();
+  cv.focus({ preventScroll: true });
 });
 $("zoom").addEventListener("input", aplicarZoom);
 $("termico").addEventListener("change", aplicarZoom);

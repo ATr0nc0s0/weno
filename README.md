@@ -27,6 +27,7 @@ Pruébalo en **https://weno.dev**: escribe a la izquierda, mira la etiqueta en v
 - Series correlativas en decimal o hex con `serie`, para numerar etiquetas y tags RFID.
 - Grabación de etiquetas RFID (EPC y memoria de usuario) con la orden `rfid`.
 - 9 fuentes libres que se envían como imagen, y todas las fuentes residentes de Zebra con `fuente zebra/…`.
+- Edición visual: arrastra elementos en la vista previa para moverlos o cambiar su tamaño y el código se actualiza solo.
 - Autocompletado con explicación de cada orden y un panel que explica en español lo que hace cada línea.
 - Tildes y ñ en UTF-8.
 - `po` opcional al final de cualquier línea.
