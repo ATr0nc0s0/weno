@@ -72,6 +72,10 @@ header {
 .btn.primary { background: var(--accent); border-color: var(--accent); color: #1a0d02; font-weight: 600; }
 .btn.primary:hover { filter: brightness(1.08); }
 select.btn { padding-right: 8px; }
+.btn.mini { padding: 1px 9px; line-height: 1.4; }
+#serieNav { display: inline-flex; gap: 6px; align-items: center; color: var(--muted); font-size: 13px; }
+#serieNav[hidden] { display: none; }
+#serieNav b { color: var(--ink); font-family: var(--mono); font-weight: 600; }
 label.inline { color: var(--muted); font-size: 13px; display: flex; gap: 6px; align-items: center; }
 
 /* Área principal */
@@ -317,6 +321,7 @@ main {
         <option value="credencial">Credencial de evento</option>
         <option value="rfid">Activo con RFID</option>
         <option value="rfid4419">RFID 44 × 19 mm</option>
+        <option value="serie">Serie RFID correlativa (3)</option>
       </select>
     </label>
     <button id="copiarNova" class="btn" type="button">Copiar código WENO</button>
@@ -348,6 +353,11 @@ main {
         <button class="tab" role="tab" id="tab-ref" aria-selected="false" data-view="ref" type="button">Referencia</button>
       </div>
       <div class="right">
+        <span id="serieNav" class="inline" hidden>
+          <button id="serieAnt" class="btn mini" type="button" aria-label="Etiqueta anterior">‹</button>
+          <span>Etiqueta <b id="serieTxt">1 / 1</b></span>
+          <button id="serieSig" class="btn mini" type="button" aria-label="Etiqueta siguiente">›</button>
+        </span>
         <label class="inline" for="termico" title="Muestra los puntos tal como los imprime la cabeza térmica"><input id="termico" type="checkbox"> Puntos reales</label>
         <label class="inline" for="zoom">Zoom <input id="zoom" type="range" min="0.5" max="3" step="0.25" value="1"></label>
       </div>
@@ -387,8 +397,9 @@ main {
           <tr><td><code>etiqueta</code></td><td>Tamaño de la etiqueta (ancho x alto). Acepta <code>densidad</code> y <code>copias</code> en la misma línea.</td><td><code>etiqueta 100x60 densidad 203</code></td></tr>
           <tr><td><code>densidad</code></td><td>Puntos por pulgada de la impresora: 152, 203, 300 o 600. Por defecto 203.</td><td><code>densidad 300</code></td></tr>
           <tr><td><code>copias</code></td><td>Cuántas etiquetas imprimir.</td><td><code>copias 5</code></td></tr>
+          <tr><td><code>serie</code></td><td>Crea varias etiquetas con un correlativo que sube en cada una. <code>desde</code> valor inicial · <code>cantidad</code> · <code>paso</code> (1) · <code>hex</code> o <code>decimal</code>. Mantiene los ceros a la izquierda.</td><td><code>serie epc desde "30340000000000000000000A" cantidad 3 hex</code></td></tr>
           <tr><td><code>fuente</code></td><td>Letra para todos los textos. Cada texto puede cambiarla con su propia <code>fuente …</code>. Ver la tabla de fuentes más abajo.</td><td><code>fuente legible</code></td></tr>
-          <tr><td><code>var</code></td><td>Define una variable. Úsala en cualquier texto con <code>{nombre}</code>. Incluidas: <code>{fecha}</code>, <code>{hora}</code>.</td><td><code>var cliente = "Ana Pérez"</code></td></tr>
+          <tr><td><code>var</code></td><td>Define una variable. Úsala en cualquier texto con <code>{nombre}</code>. Incluidas: <code>{fecha}</code>, <code>{hora}</code>, <code>{nro}</code> (número de etiqueta) y <code>{total}</code>.</td><td><code>var cliente = "Ana Pérez"</code></td></tr>
         </table></div>
 
         <h2>Elementos</h2>
@@ -544,6 +555,20 @@ texto "{epc}" @ 1.5,15.3 tam 1.8 fuente mono
 qr "{epc}" @ 31.5,1.5 tam 11
 texto "RFID" @ 31.5,13.4 tam 2 ancho 10.6 centro negrita
 `,
+  serie: `// 3 etiquetas con EPC correlativo en hex.
+// En cada etiqueta cambian el chip RFID, el texto y el código de barras.
+etiqueta 60x30 densidad 300
+fuente legible
+
+serie epc desde "3034257BF7194E4000001A85" cantidad 3 hex
+
+rfid "{epc}"
+
+texto "ETIQUETA {nro} DE {total}" @ 3,2 tam 3 negrita
+texto "EPC" @ 3,6.5 tam 2.2
+texto "{epc}" @ 3,9.5 tam 2.6 fuente mono
+barras "{epc}" @ centro,14 alto 10 modulo 0.17 sintexto
+`,
   credencial: `// Credencial 86 x 54 mm (tamaño tarjeta)
 etiqueta 86x54 densidad 300
 
@@ -584,7 +609,7 @@ function sugerir(w, lista) {
 }
 
 /* ================== Lenguaje ================== */
-const ORDENES = ["etiqueta", "densidad", "copias", "fuente", "var", "texto", "caja", "linea", "circulo", "barras", "qr", "rfid"];
+const ORDENES = ["etiqueta", "densidad", "copias", "fuente", "var", "texto", "caja", "linea", "circulo", "barras", "qr", "rfid", "serie"];
 const ALIAS = { "codigo": "barras", "codigobarras": "barras", "rectangulo": "caja", "cuadro": "caja", "circ": "circulo", "variable": "var", "dpi": "densidad", "txt": "texto" };
 
 // Propiedades por orden: tipo num | int | flag | enum:[...]
@@ -659,9 +684,9 @@ function leerCadena(tok, vars) {
   });
 }
 
-function analizar(codigo) {
+function analizar(codigo, indice = 0) {
   const doc = { ancho: 100, alto: 60, dpi: 203, copias: 1, elems: [], rfid: [], diag: [], tieneEtiqueta: false };
-  const vars = fechaHoy();
+  const vars = Object.assign(fechaHoy(), { nro: String(indice + 1), total: "1" });
   const lineas = codigo.split("\n");
   lineas.forEach((texto, i) => {
     const ln = i + 1;
@@ -678,6 +703,36 @@ function analizar(codigo) {
       let k = 1;
       const next = () => toks[k++];
 
+      if (cmd === "serie") {
+        const n = next();
+        if (!n || n.t !== "word") throw new ErrNova('Escribe: serie nombre desde "0001" cantidad 10');
+        if (doc.serie) throw new ErrNova("Solo se permite una serie por etiqueta.");
+        let desde = null, cantidad = null, paso = 1n, hex = false;
+        while (k < toks.length) {
+          const t = next(), w = norm(t.v);
+          if (w === "desde") { const v = next(); if (!v || v.t !== "str") throw new ErrNova('Indica el valor inicial entre comillas: desde "0001"'); desde = leerCadena(v, vars).trim(); }
+          else if (w === "cantidad") cantidad = Math.round(leerLong(next(), "cantidad"));
+          else if (w === "paso") paso = BigInt(Math.round(leerLong(next(), "paso")));
+          else if (w === "hex") hex = true;
+          else if (w === "decimal") hex = false;
+          else throw new ErrNova(`serie no tiene «${t.v}». Usa: desde, cantidad, paso, hex o decimal.${sugerir(w, ["desde", "cantidad", "paso", "hex", "decimal"])}`);
+        }
+        if (desde == null) throw new ErrNova('Falta el valor inicial: desde "0001"');
+        if (!cantidad || cantidad < 1) throw new ErrNova("Falta cuántas etiquetas: cantidad 10");
+        if (cantidad > 1000) throw new ErrNova("Una serie admite hasta 1000 etiquetas por vez.");
+        if (paso < 1n) throw new ErrNova("El paso debe ser 1 o más.");
+        if (!(hex ? /^[0-9A-Fa-f]+$/ : /^\d+$/).test(desde))
+          throw new ErrNova(hex ? "En una serie hex el valor inicial solo puede tener 0-9 y A-F." : "El valor inicial debe ser un número. Si tiene letras A-F, agrega: hex");
+        const base = hex ? 16 : 10, ancho = desde.length;
+        const ini = BigInt((hex ? "0x" : "") + desde);
+        const fin = ini + paso * BigInt(cantidad - 1);
+        if (fin.toString(base).length > ancho) throw new ErrNova(`El correlativo no cabe en ${ancho} dígitos: la última etiqueta llegaría a ${fin.toString(base).toUpperCase()}.`);
+        const i = Math.min(indice, cantidad - 1);
+        vars[norm(n.v)] = (ini + paso * BigInt(i)).toString(base).toUpperCase().padStart(ancho, "0");
+        vars.nro = String(i + 1); vars.total = String(cantidad);
+        doc.serie = { nombre: n.v, cantidad, hex, ln };
+        return;
+      }
       if (cmd === "var") {
         const n = next();
         if (!n || n.t !== "word") throw new ErrNova("Escribe el nombre de la variable: var nombre = \"valor\"");
@@ -807,7 +862,7 @@ function analizar(codigo) {
     }
   });
   if (doc.rfid.length && doc.copias > 1)
-    doc.diag.push({ ln: doc.rfid[0].ln, tipo: "wrn", msg: `Con ${doc.copias} copias, todos los tags quedarán con el mismo dato RFID. Para numerar cada tag, genera una etiqueta por dato.` });
+    doc.diag.push({ ln: doc.rfid[0].ln, tipo: "wrn", msg: `Con ${doc.copias} copias, todos los tags quedarán con el mismo dato RFID. Para que cada tag tenga su propio dato, usa una serie (orden «serie»).` });
   if (!doc.tieneEtiqueta) doc.diag.unshift({ ln: 1, tipo: "wrn", msg: "Sin «etiqueta AxB»: uso 100x60 mm por defecto." });
   return doc;
 }
@@ -1144,9 +1199,11 @@ function zplCampo(s) {
   if (/[\^~_]/.test(s)) return { fh: "^FH_", d: s.replace(/_/g, "_5F").replace(/\^/g, "_5E").replace(/~/g, "_7E") };
   return { fh: "", d: s };
 }
-function aZPL(doc, comp) {
+function aZPL(doc, comp, titulo) {
   const L = [];
-  L.push("^XA", "^CI28", `^PW${comp.W}`, `^LL${comp.H}`, "^LH0,0");
+  L.push("^XA");
+  if (titulo) L.push(`^FX ${titulo}`);
+  L.push("^CI28", `^PW${comp.W}`, `^LL${comp.H}`, "^LH0,0");
   if (doc.rfid.length) {
     // ^RS8: tags Gen 2; el 4.º parámetro es cuántas etiquetas intenta si falla la grabación (imprime VOID)
     const intentos = Math.max(1, Math.min(10, doc.rfid.find(r => r.intentos)?.intentos || 3));
@@ -1266,7 +1323,7 @@ function zplHtml(z) {
 }
 
 /* ================== Resaltado del editor ================== */
-const TODAS_PROPS = new Set(Object.values(PROPS).flatMap(o => Object.keys(o)).concat(Object.keys(PROP_ALIAS), ["a", "centro", "izquierda", "derecha", "code128", "code39", "ean13"], Object.keys(FUENTES)));
+const TODAS_PROPS = new Set(Object.values(PROPS).flatMap(o => Object.keys(o)).concat(Object.keys(PROP_ALIAS), ["a", "centro", "izquierda", "derecha", "code128", "code39", "ean13", "desde", "cantidad", "paso", "hex", "decimal"], Object.keys(FUENTES)));
 function resaltar(codigo) {
   return codigo.split("\n").map(linea => {
     const toks = tokenizar(linea);
@@ -1301,18 +1358,42 @@ function resaltar(codigo) {
 /* ================== Aplicación ================== */
 const src = $("src"), hl = $("hl"), gutter = $("gutter"), cv = $("cv");
 const medidor = document.createElement("canvas").getContext("2d");
-let ultimo = null, zplActual = "";
+let ultimo = null, zplCache = { codigo: null, z: "" }, indiceSerie = 0;
+function zplCompleto() {
+  const codigo = src.value;
+  if (zplCache.codigo === codigo) return zplCache.z;
+  const base = ultimo.doc;
+  let z;
+  if (!base.serie) z = aZPL(base, ultimo.comp);
+  else {
+    const partes = [];
+    for (let i = 0; i < base.serie.cantidad; i++) {
+      const d = i === indiceSerie ? ultimo.doc : analizar(codigo, i);
+      const c = i === indiceSerie ? ultimo.comp : compilar(d, medidor);
+      partes.push(aZPL(d, c, `Etiqueta ${i + 1} de ${base.serie.cantidad}`));
+    }
+    z = partes.join("\n");
+  }
+  zplCache = { codigo, z };
+  return z;
+}
+function pintarZPL() { $("zpl").innerHTML = zplHtml(zplCompleto()); }
 
 function lineaCursor() { return src.value.slice(0, src.selectionStart).split("\n").length; }
 
 function actualizar() {
   const codigo = src.value;
   hl.innerHTML = resaltar(codigo);
-  const doc = analizar(codigo);
+  let doc = analizar(codigo, indiceSerie);
+  if (doc.serie && indiceSerie >= doc.serie.cantidad) { indiceSerie = doc.serie.cantidad - 1; doc = analizar(codigo, indiceSerie); }
+  if (!doc.serie) indiceSerie = 0;
   const comp = compilar(doc, medidor);
   ultimo = { doc, comp };
-  zplActual = aZPL(doc, comp);
-  $("zpl").innerHTML = zplHtml(zplActual);
+  zplCache.codigo = null;
+  if ($("view-zpl").classList.contains("on")) pintarZPL();
+  const nav = $("serieNav");
+  nav.hidden = !doc.serie;
+  if (doc.serie) $("serieTxt").textContent = `${indiceSerie + 1} / ${doc.serie.cantidad}`;
 
   // Diagnóstico
   const errs = doc.diag.filter(d => d.tipo === "err").length, wrns = doc.diag.length - errs;
@@ -1334,7 +1415,7 @@ function actualizar() {
   $("tam").textContent = `${doc.ancho} × ${doc.alto} mm · ${comp.W} × ${comp.H} pt`;
   $("dpiInfo").textContent = `${doc.dpi} ppp${doc.copias > 1 ? ` · ${doc.copias} copias` : ""}`;
   $("nEl").textContent = comp.items.length;
-  $("dims").textContent = `${doc.ancho} × ${doc.alto} mm${doc.rfid.length ? " · con RFID" : ""}`;
+  $("dims").textContent = `${doc.ancho} × ${doc.alto} mm${doc.rfid.length ? " · con RFID" : ""}${doc.serie ? ` · etiqueta ${indiceSerie + 1} de ${doc.serie.cantidad}` : ""}`;
   $("rfidInfo").textContent = doc.rfid.length ? doc.rfid.map(r => `${r.banco.toUpperCase()} ${r.bytes * 8} bits${r.bloquear ? " (bloqueado)" : ""}`).join(" + ") : "no";
   aplicarZoom();
   marcarSeleccion();
@@ -1427,6 +1508,7 @@ document.querySelectorAll(".tab").forEach(t => t.addEventListener("click", () =>
   document.querySelectorAll(".tab").forEach(o => o.setAttribute("aria-selected", String(o === t)));
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === "view-" + t.dataset.view));
   if (t.dataset.view === "vista") aplicarZoom();
+  if (t.dataset.view === "zpl") pintarZPL();
 }));
 
 // Ejemplos
@@ -1447,7 +1529,13 @@ async function copiar(texto, ok) {
     ta.remove(); aviso(bien ? ok : "No se pudo copiar. Selecciona el texto y usa Ctrl+C.");
   }
 }
-$("copiarZpl").addEventListener("click", () => copiar(zplActual, "ZPL copiado. Pégalo en tu impresora o en Labelary."));
+$("copiarZpl").addEventListener("click", () => {
+  const z = zplCompleto();
+  const n = ultimo?.doc.serie ? ` (${ultimo.doc.serie.cantidad} etiquetas)` : "";
+  copiar(z, `ZPL copiado${n}. Pégalo en tu impresora o en Labelary.`);
+});
+$("serieAnt").addEventListener("click", () => { if (indiceSerie > 0) { indiceSerie--; actualizar(); } });
+$("serieSig").addEventListener("click", () => { if (ultimo?.doc.serie && indiceSerie < ultimo.doc.serie.cantidad - 1) { indiceSerie++; actualizar(); } });
 $("copiarNova").addEventListener("click", () => copiar(src.value, "Código WENO copiado."));
 
 // Inicio

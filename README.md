@@ -23,6 +23,7 @@ Pruébalo en **https://weno.dev**: escribe a la izquierda, mira la etiqueta en v
 - Medidas en milímetros, posición con `@ x,y` y `@ centro,y`.
 - Variables con `{nombre}`, más `{fecha}` y `{hora}`.
 - Códigos Code 128, Code 39, EAN-13 y QR.
+- Series correlativas en decimal o hex con `serie`, para numerar etiquetas y tags RFID.
 - Grabación de etiquetas RFID (EPC y memoria de usuario) con la orden `rfid`.
 - 9 fuentes libres que se envían como imagen, y todas las fuentes residentes de Zebra con `fuente zebra/…`.
 - Tildes y ñ en UTF-8.
