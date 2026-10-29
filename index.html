@@ -144,6 +144,52 @@ main {
   resize: none;
   outline: none;
 }
+/* Sugerencias y ayuda */
+.sug {
+  position: absolute;
+  z-index: 20;
+  min-width: 300px;
+  max-width: 440px;
+  max-height: 260px;
+  overflow: auto;
+  background: var(--raise);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0,0,0,.5);
+  padding: 4px;
+  display: none;
+  font-size: 13px;
+}
+.sug.on { display: block; }
+.sug-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 10px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  align-items: baseline;
+}
+.sug-item[aria-selected="true"] { background: rgba(255, 122, 26, .16); }
+.sug-item .lbl { font-family: var(--mono); color: var(--ink); font-weight: 600; }
+.sug-item .tipo { font: 600 10px var(--mono); text-transform: uppercase; letter-spacing: .05em; color: var(--muted); justify-self: end; }
+.sug-item .desc { grid-column: 1 / -1; color: var(--muted); font-size: 12.5px; }
+.sug-pie { padding: 5px 8px 3px; color: #5f6e7c; font-size: 11.5px; border-top: 1px solid var(--line); margin-top: 3px; }
+.ayuda {
+  border-top: 1px solid var(--line);
+  background: var(--raise);
+  padding: 8px 12px 9px 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #c6d0d9;
+  flex-shrink: 0;
+  border-left: 3px solid var(--accent);
+  min-height: 40px;
+}
+.ayuda b { color: var(--ink); }
+.ayuda .t { font: 600 10.5px var(--mono); text-transform: uppercase; letter-spacing: .06em; color: var(--accent); margin-right: 8px; }
+.ayuda code { font-family: var(--mono); font-size: 12px; background: var(--bg); padding: 1px 5px; border-radius: 4px; color: var(--ink); }
+.ayuda .palabra { display: block; margin-top: 3px; color: var(--muted); }
 .code textarea::selection { background: rgba(111, 211, 255, .25); color: transparent; }
 .tk-com { color: #5f6e7c; font-style: italic; }
 .tk-str { color: var(--cyan); }
@@ -340,9 +386,11 @@ main {
       <div class="gutter" id="gutter" aria-hidden="true"></div>
       <div class="code">
         <pre id="hl" aria-hidden="true"></pre>
-        <textarea id="src" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Código WENO"></textarea>
+        <textarea id="src" spellcheck="false" autocapitalize="off" autocomplete="off" aria-label="Código WENO" aria-autocomplete="list" aria-controls="sug"></textarea>
+        <div class="sug" id="sug" role="listbox" aria-label="Sugerencias"></div>
       </div>
     </div>
+    <div class="ayuda" id="ayuda" aria-live="polite"></div>
     <div class="diag" id="diag" aria-live="polite"></div>
   </section>
 
@@ -613,7 +661,7 @@ texto "FC26-0142" @ 60,45 tam 3 ancho 22 derecha
 /* ================== Utilidades ================== */
 const $ = id => document.getElementById(id);
 const norm = s => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
-const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const esc = s => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 function lev(a, b) {
   const m = a.length, n = b.length, d = Array.from({ length: m + 1 }, (_, i) => [i]);
@@ -1485,12 +1533,309 @@ function marcarSeleccion() {
   box.style.height = (Math.max(2, it.bh) * s + pad * 2) + "px";
 }
 
+/* ================== Asistente: sugerencias y explicación ================== */
+const DOC_ORDEN = {
+  etiqueta: ["Tamaño de la etiqueta en mm. Va primero.", "etiqueta 100x60 densidad 203"],
+  densidad: ["Puntos por pulgada de la impresora: 203, 300 o 600.", "densidad 203"],
+  copias:   ["Cuántas copias imprimir de cada etiqueta.", "copias 1"],
+  fuente:   ["Letra para todos los textos que vienen después.", "fuente legible"],
+  var:      ["Guarda un dato con un nombre. Úsalo después con {nombre}.", 'var nombre = "valor"'],
+  serie:    ["Correlativo que sube en cada etiqueta (decimal o hex).", 'serie n desde "0001" cantidad 10'],
+  texto:    ["Escribe un texto en la etiqueta.", 'texto "Hola" @ 5,5 tam 4'],
+  caja:     ["Rectángulo con borde o relleno negro.", "caja @ 2,2 40x20 borde 0.3"],
+  linea:    ["Línea recta entre dos puntos.", "linea @ 2,20 a 98,20 grosor 0.3"],
+  circulo:  ["Círculo de un diámetro dado.", "circulo @ 5,5 diam 10 borde 0.3"],
+  barras:   ["Código de barras (Code 128, Code 39 o EAN-13).", 'barras "12345678" @ 5,30 alto 12'],
+  qr:       ["Código QR.", 'qr "https://weno.dev" @ 70,30 tam 20'],
+  rfid:     ["Graba el chip de una etiqueta RFID. No se dibuja.", 'rfid "3034257BF7194E4000001A85"']
+};
+const DOC_PROP = {
+  tam: ["Alto de la letra en mm (por defecto 4). En qr: lado aproximado.", "tam 4"],
+  negrita: ["Letra más gruesa.", "negrita"],
+  ancho: ["Ancho de la caja de texto en mm; el texto se parte en líneas.", "ancho 40"],
+  lineas: ["Máximo de líneas dentro del ancho.", "lineas 2"],
+  centro: ["Centra el texto dentro de su ancho.", "centro"],
+  derecha: ["Alinea el texto a la derecha.", "derecha"],
+  izquierda: ["Alinea el texto a la izquierda.", "izquierda"],
+  justificado: ["Reparte el texto en todo el ancho.", "justificado"],
+  girar: ["Gira el elemento 90, 180 o 270 grados.", "girar 90"],
+  blanco: ["Texto blanco, para poner sobre fondo negro.", "blanco"],
+  fuente: ["Letra solo para este texto.", "fuente "],
+  borde: ["Grosor del borde en mm (por defecto 0.3).", "borde 0.3"],
+  radio: ["Esquinas redondeadas, en mm.", "radio 2"],
+  relleno: ["Relleno negro completo.", "relleno"],
+  grosor: ["Grosor de la línea en mm (por defecto 0.3).", "grosor 0.3"],
+  diam: ["Diámetro del círculo en mm.", "diam 10"],
+  alto: ["Alto de las barras en mm (por defecto 12).", "alto 12"],
+  tipo: ["Tipo de código: code128, code39 o ean13.", "tipo "],
+  modulo: ["Ancho de la barra más fina en mm (0.25). Más grueso se escanea mejor.", "modulo 0.25"],
+  sintexto: ["Oculta el número que va bajo las barras.", "sintexto"],
+  nivel: ["Corrección de errores del QR: L, M, Q o H.", "nivel "],
+  formato: ["Cómo viene el dato RFID: hex o texto.", "formato "],
+  banco: ["Memoria del tag: epc o usuario.", "banco "],
+  bloquear: ["Protege el dato RFID contra cambios. Es permanente.", "bloquear"],
+  intentos: ["Etiquetas a probar si falla la grabación RFID (3).", "intentos 3"],
+  densidad: ["Puntos por pulgada de la impresora.", "densidad 203"],
+  copias: ["Cuántas copias imprimir.", "copias 1"],
+  desde: ["Valor inicial del correlativo, entre comillas.", 'desde "0001"'],
+  cantidad: ["Cuántas etiquetas crea la serie.", "cantidad 10"],
+  paso: ["Cuánto sube el correlativo en cada etiqueta (1).", "paso 1"],
+  hex: ["Cuenta en hexadecimal (0-9, A-F).", "hex"],
+  decimal: ["Cuenta en decimal (0-9).", "decimal"],
+  a: ["Punto final de la línea: a x,y", "a "],
+  po: ["Guiño chileno: WENO lo ignora.", "po"]
+};
+const PROPS_EXTRA = { etiqueta: ["densidad", "copias"], serie: ["desde", "cantidad", "paso", "hex", "decimal"], linea: ["a"] };
+const VALORES = {
+  tipo: { code128: "Letras y números (el más usado)", code39: "Mayúsculas y números, más ancho", ean13: "12 dígitos, productos de retail" },
+  girar: { "90": "Un cuarto de vuelta a la derecha", "180": "De cabeza", "270": "Un cuarto de vuelta a la izquierda" },
+  nivel: { l: "Baja: QR más chico", m: "Media (por defecto)", q: "Alta", h: "Máxima: resiste más daño" },
+  formato: { hex: "Dígitos 0-9 y A-F (lo normal en EPC)", texto: "Letras y números ASCII" },
+  banco: { epc: "Memoria principal del tag (por defecto)", usuario: "Memoria extra, si el tag la tiene" }
+};
+function valoresFuente() {
+  const o = {};
+  for (const [k, f] of Object.entries(FUENTES)) o[k] = f.fam ? f.nombre : "Fuente 0 de la impresora";
+  for (const [k, z] of Object.entries(ZBITMAP)) o["zebra/" + k] = z.desc ? `Residente: ${z.desc}` : `Residente fija de ${z.h} puntos`;
+  return o;
+}
+function variablesDefinidas(codigo) {
+  const v = { fecha: "Fecha de hoy", hora: "Hora actual", nro: "Número de etiqueta", total: "Total de etiquetas de la serie" };
+  for (const ln of codigo.split("\n")) {
+    const m = /^\s*(var|serie)\s+([^\s=@"]+)/i.exec(ln);
+    if (m) v[m[2]] = norm(m[1]) === "serie" ? "Correlativo de la serie" : "Variable definida con var";
+  }
+  return v;
+}
+
+const sugBox = $("sug");
+let sugItems = [], sugSel = 0, sugRango = null;
+
+function contextoCursor() {
+  const pos = src.selectionStart;
+  const ini = src.value.lastIndexOf("\n", pos - 1) + 1;
+  const antes = src.value.slice(ini, pos);
+  return { pos, ini, antes };
+}
+function calcularSugerencias(forzar) {
+  const { pos, antes } = contextoCursor();
+  const comillas = (antes.match(/(?<!\\)"/g) || []).length;
+  // Dentro de comillas: solo variables tras «{»
+  if (comillas % 2 === 1) {
+    const ab = antes.lastIndexOf("{"), ce = antes.lastIndexOf("}");
+    if (ab <= ce) return null;
+    const dentro = antes.slice(ab + 1);
+    const vars = variablesDefinidas(src.value);
+    const m = /^(\S+)\s+(\S*)$/.exec(dentro);
+    if (m && vars[m[1]] !== undefined) {
+      const items = [
+        { lbl: "ultimos 10", tipo: "parte", desc: "Usa solo los últimos caracteres", ins: "ultimos 10" },
+        { lbl: "primeros 4", tipo: "parte", desc: "Usa solo los primeros caracteres", ins: "primeros 4" }
+      ].filter(i => i.lbl.startsWith(norm(m[2])));
+      return { items, desde: pos - m[2].length };
+    }
+    const parcial = dentro;
+    const base = ["fecha", "hora", "nro", "total"];
+    const items = [];
+    for (const [k, d] of Object.entries(vars)) {
+      if (!norm(k).startsWith(norm(parcial))) continue;
+      items.push({ lbl: k, tipo: "variable", desc: d, ins: k + "}" });
+      if (!base.includes(k)) items.push({ lbl: `${k} ultimos 10`, tipo: "parte", desc: `Solo los últimos 10 caracteres de ${k} (cambia el número a gusto)`, ins: `${k} ultimos 10}` });
+    }
+    return { items, desde: pos - parcial.length, cierra: true };
+  }
+  const mp = /[^\s@,="]*$/.exec(antes);
+  const parcial = mp ? mp[0] : "";
+  const previo = antes.slice(0, antes.length - parcial.length);
+  // Sin letras escritas solo se abre sola para elegir un valor (fuente, tipo…); si no, con Ctrl+Espacio
+  const auto = !forzar && !parcial;
+  if (auto && !/\s$/.test(previo)) return null;
+  const toks = tokenizar(previo).filter(t => t.t !== "com");
+  const filtro = arr => arr.filter(i => norm(i.lbl).startsWith(norm(parcial)) && norm(i.lbl) !== norm(parcial) || (!parcial));
+  if (!toks.length) {
+    if (auto) return null;
+    const items = ORDENES.map(o => ({ lbl: o, tipo: "orden", desc: DOC_ORDEN[o][0], ins: DOC_ORDEN[o][1] }));
+    return { items: filtro(items), desde: pos - parcial.length, plantilla: true };
+  }
+  let cmd = norm(toks[0].v); cmd = ALIAS[cmd] || cmd;
+  if (!ORDENES.includes(cmd)) return null;
+  const ult = toks[toks.length - 1];
+  const ultN = ult && ult.t === "word" ? (PROP_ALIAS[norm(ult.v)] || norm(ult.v)) : "";
+  // Valor de una propiedad con opciones
+  let opciones = null;
+  if (ultN === "fuente") opciones = valoresFuente();
+  else if (VALORES[ultN] && (PROPS[cmd]?.[ultN])) opciones = VALORES[ultN];
+  if (opciones) {
+    const items = Object.entries(opciones).map(([k, d]) => ({ lbl: k, tipo: "valor", desc: d, ins: k + " " }));
+    return { items: items.filter(i => norm(i.lbl).startsWith(norm(parcial))), desde: pos - parcial.length };
+  }
+  // Si falta la posición, la sugerimos primero
+  const necesitaPos = !["etiqueta", "densidad", "copias", "fuente", "var", "serie", "rfid"].includes(cmd);
+  const tienePos = toks.some(t => t.t === "@");
+  const necesitaValor = ["texto", "barras", "qr", "rfid"].includes(cmd) && !toks.some(t => t.t === "str");
+  if (auto && !(cmd === "fuente" && toks.length === 1)) return null;
+  if (necesitaValor) return { items: [{ lbl: '"…"', tipo: "contenido", desc: "Escribe el contenido entre comillas", ins: '"" ' }], desde: pos - parcial.length, solo: !parcial };
+  if (necesitaPos && !tienePos) return { items: [{ lbl: "@ x,y", tipo: "posición", desc: "Esquina superior izquierda en mm desde el borde izquierdo y el superior", ins: "@ 5,5 " }], desde: pos - parcial.length };
+  if (["densidad", "copias", "fuente", "var"].includes(cmd) && cmd !== "fuente") return null;
+  if (cmd === "fuente" && toks.length === 1) {
+    const items = Object.entries(valoresFuente()).map(([k, d]) => ({ lbl: k, tipo: "valor", desc: d, ins: k }));
+    return { items: items.filter(i => norm(i.lbl).startsWith(norm(parcial))), desde: pos - parcial.length };
+  }
+  const usadas = new Set(toks.filter(t => t.t === "word").map(t => PROP_ALIAS[norm(t.v)] || norm(t.v)));
+  const disp = Object.keys(PROPS[cmd] || {}).filter(k => !PROP_ALIAS[k] && k !== "sin_texto").concat(PROPS_EXTRA[cmd] || []);
+  const items = disp.filter(k => !usadas.has(k) && DOC_PROP[k]).map(k => ({ lbl: k, tipo: "propiedad", desc: DOC_PROP[k][0], ins: DOC_PROP[k][1] }));
+  return { items: items.filter(i => norm(i.lbl).startsWith(norm(parcial))), desde: pos - parcial.length };
+}
+const medidorMono = document.createElement("canvas").getContext("2d");
+function abrirSugerencias(forzar) {
+  const r = calcularSugerencias(forzar);
+  if (!r || !r.items.length || (r.solo && !forzar && false)) { cerrarSugerencias(); return; }
+  sugItems = r.items.slice(0, 40); sugSel = 0; sugRango = r;
+  sugBox.innerHTML = sugItems.map((it, i) =>
+    `<div class="sug-item" role="option" id="sug-${i}" aria-selected="${i === 0}" data-i="${i}"><span class="lbl">${esc(it.lbl)}</span><span class="tipo">${esc(it.tipo)}</span><span class="desc">${esc(it.desc)}</span></div>`).join("") +
+    `<div class="sug-pie">↑↓ elegir · Enter o Tab insertar · Esc cerrar · Ctrl+Espacio abrir</div>`;
+  // Posición junto al cursor
+  const { pos, ini } = contextoCursor();
+  const fila = src.value.slice(0, pos).split("\n").length - 1;
+  medidorMono.font = getComputedStyle(src).font;
+  const col = medidorMono.measureText(src.value.slice(ini, pos)).width;
+  const caja = src.parentElement.getBoundingClientRect();
+  let left = 16 + col - src.scrollLeft, top = 14 + (fila + 1) * 22 - src.scrollTop + 2;
+  left = Math.max(4, Math.min(left, caja.width - 310));
+  if (top + 200 > caja.height) top = Math.max(4, top - 22 - Math.min(262, sugBox.scrollHeight || 200) - 4);
+  sugBox.style.left = left + "px"; sugBox.style.top = top + "px";
+  sugBox.classList.add("on");
+  src.setAttribute("aria-activedescendant", "sug-0");
+}
+function cerrarSugerencias() { sugBox.classList.remove("on"); sugItems = []; src.removeAttribute("aria-activedescendant"); }
+function moverSel(d) {
+  if (!sugItems.length) return;
+  sugSel = (sugSel + d + sugItems.length) % sugItems.length;
+  [...sugBox.querySelectorAll(".sug-item")].forEach((el, i) => el.setAttribute("aria-selected", String(i === sugSel)));
+  const el = $("sug-" + sugSel); el?.scrollIntoView({ block: "nearest" });
+  src.setAttribute("aria-activedescendant", "sug-" + sugSel);
+}
+function aceptarSugerencia(i = sugSel) {
+  const it = sugItems[i]; if (!it) return;
+  const { pos } = contextoCursor();
+  let ins = it.ins, desde = sugRango.desde;
+  // Si después del cursor ya viene «}», no duplicarla
+  if (sugRango.cierra && src.value[pos] === "}") ins = ins.replace(/\}$/, "");
+  src.setRangeText(ins, desde, pos, "end");
+  // En plantillas, seleccionar el primer contenido entre comillas para reemplazarlo al tiro
+  const q1 = ins.indexOf('"');
+  if (q1 >= 0) {
+    const q2 = ins.indexOf('"', q1 + 1);
+    if (q2 > q1) src.setSelectionRange(desde + q1 + 1, desde + q2);
+  }
+  cerrarSugerencias();
+  src.focus();
+  src.dispatchEvent(new Event("input"));
+  // Encadenar: tras «fuente », «tipo »… mostrar las opciones
+  if (/ $/.test(ins) && q1 < 0) setTimeout(() => abrirSugerencias(true), 0);
+}
+sugBox.addEventListener("mousedown", e => { const el = e.target.closest(".sug-item"); if (el) { e.preventDefault(); aceptarSugerencia(+el.dataset.i); } });
+src.addEventListener("blur", () => setTimeout(cerrarSugerencias, 120));
+src.addEventListener("scroll", cerrarSugerencias);
+
+// Explicación en lenguaje simple de la línea actual
+function mm(v) { return `${v} mm`; }
+function explicarLinea(linea) {
+  const toks = tokenizar(linea);
+  const com = toks.find(t => t.t === "com");
+  const reales = toks.filter(t => t.t !== "com");
+  if (!reales.length) return com ? "Es un comentario: WENO lo ignora. Sirve para dejar notas." : "Línea vacía. Escribe una orden (por ejemplo <code>texto</code>) o presiona <b>Ctrl+Espacio</b> para ver sugerencias.";
+  if (norm(reales[reales.length - 1].v) === "po" && reales.length > 1) reales.pop();
+  let cmd = norm(reales[0].v); cmd = ALIAS[cmd] || cmd;
+  if (!ORDENES.includes(cmd)) return `«${esc(reales[0].v)}» no es una orden de WENO.${esc(sugerir(cmd, ORDENES))}`;
+  const val = (reales.find(t => t.t === "str")?.v || "").replace(/^"|"$/g, "");
+  const p = {}, palabras = reales.filter(t => t.t === "word").slice(1);
+  for (let i = 0; i < palabras.length; i++) {
+    const w = PROP_ALIAS[norm(palabras[i].v)] || norm(palabras[i].v);
+    const def = PROPS[cmd]?.[w];
+    if (def && def !== "flag" && palabras[i + 1]) { p[w] = palabras[i + 1].v; i++; } else p[w] = true;
+  }
+  const at = reales.findIndex(t => t.t === "@");
+  const x = at >= 0 ? reales[at + 1]?.v : null, y = at >= 0 ? reales[at + 3]?.v : null;
+  const dondeX = x == null ? "" : norm(x) === "centro" ? "centrado en el ancho de la etiqueta" : `a ${mm(x)} del borde izquierdo`;
+  const donde = x == null ? "<i>sin posición todavía</i> (falta <code>@ x,y</code>)" : `${dondeX} y a ${mm(y ?? "?")} del borde superior`;
+  const dim = palabras.map(t => t.v).find(v => /^\d+(\.\d+)?x\d+(\.\d+)?$/i.test(v));
+  const mostrar = v => `«${esc(v)}»` + (/\{/.test(v) ? " (las llaves {…} se reemplazan por el valor de la variable)" : "");
+  switch (cmd) {
+    case "etiqueta": return `Define una etiqueta de <b>${esc(dim ? dim.replace("x", " × ") : "?")} mm</b> (ancho × alto)${p.densidad ? `, para una impresora de ${esc(p.densidad)} puntos por pulgada` : ""}${p.copias ? ` y ${esc(p.copias)} copias` : ""}.`;
+    case "densidad": { const d = +(palabras[0]?.v); return `La impresora imprime a <b>${esc(palabras[0]?.v ?? "?")} puntos por pulgada</b>${d ? ` (unos ${(d / 25.4).toFixed(1)} puntos por mm)` : ""}.`; }
+    case "copias": return `Imprime <b>${esc(palabras[0]?.v ?? "?")} copias</b> de cada etiqueta.`;
+    case "fuente": { const f = palabras[0]?.v || ""; const vf = valoresFuente()[norm(f)] || valoresFuente()["zebra/" + f.split("/")[1]?.toUpperCase()]; return `Los textos que siguen usan la fuente <b>${esc(f)}</b>${vf ? ` (${esc(vf)})` : ""}.`; }
+    case "var": { const n = palabras[0]?.v; return `Guarda ${mostrar(val)} con el nombre <b>${esc(n ?? "?")}</b>. Escribe <code>{${esc(n ?? "nombre")}}</code> dentro de cualquier texto para usarlo.`; }
+    case "serie": {
+      const n = palabras[0]?.v ?? "?"; const ws = palabras.map(t => norm(t.v)); const hex = ws.includes("hex");
+      const iC = ws.indexOf("cantidad"), iP = ws.indexOf("paso");
+      const cant = iC >= 0 ? palabras[iC + 1]?.v : "?", paso = iP >= 0 ? palabras[iP + 1]?.v : "1";
+      let ultimo = "";
+      try { const base = hex ? 16 : 10; const ini = BigInt((hex ? "0x" : "") + val); const fin = ini + BigInt(paso) * BigInt(+cant - 1); ultimo = ` La última será <b>${esc(fin.toString(base).toUpperCase().padStart(val.length, "0"))}</b>.`; } catch (e) {}
+      return `Crea <b>${esc(cant)} etiquetas</b>. En cada una, <code>{${esc(n)}}</code> vale un número ${hex ? "hexadecimal" : "decimal"} que parte en «${esc(val)}» y sube de ${esc(paso)} en ${esc(paso)}.${ultimo}`;
+    }
+    case "texto": {
+      const extras = [];
+      if (p.tam) extras.push(`letra de ${mm(p.tam)} de alto`); else extras.push("letra de 4 mm (por defecto)");
+      if (p.negrita) extras.push("en negrita");
+      if (p.blanco) extras.push("en blanco (para fondo negro)");
+      if (p.ancho) extras.push(`dentro de un ancho de ${mm(p.ancho)}`);
+      if (p.centro) extras.push("centrado"); if (p.derecha) extras.push("alineado a la derecha");
+      if (p.girar) extras.push(`girado ${esc(p.girar)}°`);
+      if (p.fuente) extras.push(`con la fuente ${esc(p.fuente)}`);
+      return `Escribe ${mostrar(val)} ${donde}, ${extras.join(", ")}.`;
+    }
+    case "caja": return `Dibuja un rectángulo de <b>${esc(dim ? dim.replace("x", " × ") : "?")} mm</b> ${donde}, ${p.relleno ? "relleno de negro" : `con borde de ${mm(p.borde || "0.3")}`}${p.radio ? ` y esquinas redondeadas de ${mm(p.radio)}` : ""}.`;
+    case "linea": { const ia = reales.findIndex((t, i) => i > at && t.t === "word" && norm(t.v) === "a"); const x2 = ia >= 0 ? reales[ia + 1]?.v : "?", y2 = ia >= 0 ? reales[ia + 3]?.v : "?";
+      const tipo = y === y2 ? "horizontal" : x === x2 ? "vertical" : "diagonal";
+      return `Traza una línea <b>${tipo}</b> desde ${esc(x ?? "?")},${esc(y ?? "?")} hasta ${esc(x2)},${esc(y2)} (en mm), de ${mm(p.grosor || "0.3")} de grosor.`; }
+    case "circulo": return `Dibuja un círculo de <b>${mm(p.diam || "?")}</b> de diámetro ${donde}, ${p.relleno ? "relleno de negro" : `con borde de ${mm(p.borde || "0.3")}`}.`;
+    case "barras": return `Genera un código de barras <b>${esc((p.tipo || "code128").toUpperCase())}</b> con ${mostrar(val)} ${donde}, de ${mm(p.alto || "12")} de alto y barra fina de ${mm(p.modulo || "0.25")}${p.sintexto ? ", sin el número debajo" : ", con el número debajo"}.`;
+    case "qr": return `Genera un código <b>QR</b> con ${mostrar(val)} ${donde}, de unos ${mm(p.tam || "20")} de lado (corrección ${esc((p.nivel || "m").toUpperCase())}).`;
+    case "rfid": return `Graba ${mostrar(val)} en el <b>chip RFID</b>, banco ${esc(p.banco || "epc")}, como ${p.formato === "texto" ? "texto" : "hexadecimal"}${p.bloquear ? ", y lo <b>bloquea para siempre</b>" : ""}. No se ve impreso.`;
+  }
+  return "";
+}
+function palabraEnCursor() {
+  const { pos } = contextoCursor();
+  const v = src.value;
+  let a = pos, b = pos;
+  while (a > 0 && /[^\s@,="]/.test(v[a - 1])) a--;
+  while (b < v.length && /[^\s@,="]/.test(v[b])) b++;
+  return v.slice(a, b);
+}
+function actualizarAyuda() {
+  const { ini } = contextoCursor();
+  let fin = src.value.indexOf("\n", ini); if (fin < 0) fin = src.value.length;
+  const linea = src.value.slice(ini, fin);
+  let html = `<span class="t">Esta línea</span>${explicarLinea(linea)}`;
+  const w = norm(palabraEnCursor());
+  const wn = PROP_ALIAS[w] || ALIAS[w] || w;
+  const d = DOC_ORDEN[wn]?.[0] || DOC_PROP[wn]?.[0];
+  if (d) html += `<span class="palabra"><code>${esc(wn)}</code> ${esc(d)}</span>`;
+  $("ayuda").innerHTML = html;
+}
+
 // Eventos del editor
 let timer = null;
-src.addEventListener("input", () => { clearTimeout(timer); timer = setTimeout(actualizar, 90); hl.innerHTML = resaltar(src.value); });
+src.addEventListener("input", e => {
+  clearTimeout(timer); timer = setTimeout(actualizar, 90); hl.innerHTML = resaltar(src.value);
+  actualizarAyuda();
+  if (e.inputType && e.inputType.startsWith("insert")) abrirSugerencias(false);
+  else if (e.inputType && e.inputType.startsWith("delete") && sugBox.classList.contains("on")) abrirSugerencias(false);
+});
 src.addEventListener("scroll", () => { hl.scrollTop = src.scrollTop; hl.scrollLeft = src.scrollLeft; gutter.scrollTop = src.scrollTop; });
-["keyup", "click", "select"].forEach(ev => src.addEventListener(ev, marcarSeleccion));
+["keyup", "click", "select"].forEach(ev => src.addEventListener(ev, () => { marcarSeleccion(); actualizarAyuda(); }));
+src.addEventListener("click", cerrarSugerencias);
 src.addEventListener("keydown", e => {
+  if ((e.ctrlKey || e.metaKey) && (e.key === " " || e.code === "Space")) { e.preventDefault(); abrirSugerencias(true); return; }
+  if (sugBox.classList.contains("on")) {
+    if (e.key === "ArrowDown") { e.preventDefault(); moverSel(1); return; }
+    if (e.key === "ArrowUp") { e.preventDefault(); moverSel(-1); return; }
+    if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); aceptarSugerencia(); return; }
+    if (e.key === "Escape") { e.preventDefault(); cerrarSugerencias(); return; }
+  }
   if (e.key === "Tab") {
     e.preventDefault();
     const a = src.selectionStart, b = src.selectionEnd;
@@ -1572,6 +1917,7 @@ let inicial = EJEMPLOS.envio;
 try { const g = localStorage.getItem("nova-borrador"); if (g && g.trim()) { inicial = g; $("nombreArchivo").textContent = "borrador.weno"; } } catch (e) {}
 src.value = inicial;
 actualizar();
+actualizarAyuda();
 if (document.fonts && document.fonts.load) {
   const cargas = ['700 20px "Roboto Condensed"', '500 20px "Roboto Condensed"'];
   for (const f of Object.values(FUENTES)) if (f.fam) cargas.push(`${f.n} 20px ${f.fam}`, `${f.b} 20px ${f.fam}`);
