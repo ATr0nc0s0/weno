@@ -459,7 +459,7 @@ main {
           <tr><td><code>linea</code></td><td><code>a x,y</code> punto final · <code>grosor</code> (0.3). Horizontal, vertical o diagonal.</td><td><code>linea @ 2,20 a 98,20 grosor 0.4</code></td></tr>
           <tr><td><code>circulo</code></td><td><code>diam</code> diámetro · <code>borde</code> · <code>relleno</code></td><td><code>circulo @ 80,5 diam 12 relleno</code></td></tr>
           <tr><td><code>barras</code></td><td><code>tipo</code> code128 / code39 / ean13 · <code>alto</code> (12) · <code>modulo</code> barra fina en mm (0.25) · <code>sintexto</code></td><td><code>barras "ABC-123" @ 5,30 alto 15</code></td></tr>
-          <tr><td><code>rfid</code></td><td>Graba el chip de una etiqueta RFID (no se dibuja). <code>formato</code> hex / texto · <code>banco</code> epc / usuario · <code>bloquear</code> · <code>intentos</code> etiquetas a probar si falla (3). No lleva <code>@</code>.</td><td><code>rfid "3034257BF7194E4000001A85"</code></td></tr>
+          <tr><td><code>rfid</code></td><td>Graba el chip de una etiqueta RFID (no se dibuja). <code>formato</code> hex / texto · <code>banco</code> epc / usuario · <code>bloquear clave "1234ABCD"</code> o <code>bloquear permanente</code> · <code>intentos</code> etiquetas a probar si falla (3). No lleva <code>@</code>.</td><td><code>rfid "3034257BF7194E4000001A85"</code></td></tr>
           <tr><td><code>qr</code></td><td><code>tam</code> lado aproximado (20) · <code>nivel</code> L / M / Q / H</td><td><code>qr "https://mi.sitio" @ 70,30 tam 25</code></td></tr>
         </table></div>
 
@@ -483,7 +483,7 @@ main {
         </table></div>
 
         <h2>RFID</h2>
-        <p>Necesitas una impresora Zebra con RFID (por ejemplo las series ZT400R, ZT600R o ZD500R/ZD621R) y haber calibrado el RFID una vez desde la impresora. Por defecto <code>rfid</code> escribe el EPC en hex; el EPC más común mide 96 bits (24 caracteres). Si la grabación falla, la impresora marca la etiqueta con VOID y prueba con la siguiente. <code>bloquear</code> deja el dato protegido contra cambios: úsalo solo cuando estés seguro. La vista previa y Labelary no simulan la grabación.</p>
+        <p>Necesitas una impresora Zebra con RFID (por ejemplo las series ZT400R, ZT600R o ZD500R/ZD621R) y haber calibrado el RFID una vez desde la impresora. Por defecto <code>rfid</code> escribe el EPC en hex; el EPC más común mide 96 bits (24 caracteres). Si la grabación falla, la impresora marca la etiqueta con VOID y prueba con la siguiente. Para proteger el dato hay dos formas: <code>bloquear clave "1234ABCD"</code> lo bloquea con una clave de 8 caracteres hex (se puede desbloquear con esa clave, así que guárdala), y <code>bloquear permanente</code> lo bloquea para siempre. El bloqueo usa <code>^RLM</code>, de las impresoras RFID Link-OS; las impresoras RFID más antiguas usan <code>^RZ</code>. La vista previa y Labelary no simulan la grabación.</p>
 
         <h2>Posición</h2>
         <p><code>@ x,y</code> marca la esquina superior izquierda del elemento. Escribe <code>centro</code> en lugar de x para centrar el elemento en el ancho de la etiqueta: <code>@ centro,8</code>.</p>
@@ -503,7 +503,7 @@ main {
           <tr><td><code>circulo</code></td><td><code>^GC</code></td></tr>
           <tr><td><code>barras</code></td><td><code>^BY ^BC</code>, <code>^B3</code>, <code>^BE</code></td></tr>
           <tr><td><code>qr</code></td><td><code>^BQN</code></td></tr>
-          <tr><td><code>rfid</code></td><td><code>^RS8</code> y <code>^RFW</code> (o <code>^RFL</code> con <code>bloquear</code>)</td></tr>
+          <tr><td><code>rfid</code></td><td><code>^RS8</code> y <code>^RFW</code>; con <code>bloquear</code>, la clave con <code>^RFW,H,P</code> y el bloqueo con <code>^RLM</code></td></tr>
           <tr><td><code>copias</code></td><td><code>^PQ</code></td></tr>
         </table></div>
         <h2>Aviso de marcas</h2>
@@ -689,7 +689,7 @@ const PROPS = {
   circulo:{ diam: "num", borde: "num", relleno: "flag" },
   barras: { alto: "num", tipo: ["code128", "code39", "ean13"], modulo: "num", sintexto: "flag", sin_texto: "flag" },
   qr:     { tam: "num", nivel: ["l", "m", "q", "h"] },
-  rfid:   { formato: ["hex", "texto"], banco: ["epc", "usuario"], bloquear: "flag", intentos: "int" }
+  rfid:   { formato: ["hex", "texto"], banco: ["epc", "usuario"], bloquear: "flag", clave: "clave", permanente: "flag", intentos: "int" }
 };
 const PROP_ALIAS = { "tamano": "tam", "tamaño": "tam", "size": "tam", "bold": "negrita", "centrado": "centro", "rotar": "girar", "rotacion": "girar", "invertido": "blanco", "grueso": "grosor", "diametro": "diam", "lleno": "relleno", "relleno": "relleno", "redondeo": "radio", "barra": "modulo" };
 
@@ -883,6 +883,12 @@ function analizar(codigo, indice = 0) {
         const vt = next();
         if (!vt) throw new ErrNova(`Falta el valor de ${pn}.`);
         if (tipo === "fuente") { el.p[pn] = leerFuente(vt.v); continue; }
+        if (tipo === "clave") {
+          const c = (vt.t === "str" ? leerCadena(vt, vars) : vt.v).replace(/\s/g, "").toUpperCase();
+          if (!/^[0-9A-F]{8}$/.test(c)) throw new ErrNova("La clave RFID son 8 caracteres hex (0-9, A-F), por ejemplo: clave \"1234ABCD\"");
+          if (c === "00000000") throw new ErrNova("La clave no puede ser 00000000: con esa clave el bloqueo no protege nada.");
+          el.p[pn] = c; continue;
+        }
         if (Array.isArray(tipo)) {
           const vv = norm(vt.v.replace(/"/g, ""));
           if (!tipo.includes(vv)) throw new ErrNova(`${pn} acepta: ${tipo.join(", ")}.`);
@@ -912,8 +918,13 @@ function analizar(codigo, indice = 0) {
           if (banco === "epc" && dato.length > 12) throw new ErrNova("En el banco EPC caben 12 caracteres de texto (96 bits). Acorta el texto o usa: banco usuario");
         }
         const bytes = fmt === "hex" ? dato.length / 2 : dato.length;
+        const permanente = !!el.p.permanente;
+        const bloquear = !!el.p.bloquear || permanente;
+        if (el.p.clave && !bloquear) doc.diag.push({ ln, tipo: "wrn", msg: "Pusiste clave pero no bloquear: la clave se graba en el tag, pero el dato queda sin bloquear." });
+        if (bloquear && !permanente && !el.p.clave)
+          throw new ErrNova('Para bloquear hace falta una clave de 8 caracteres hex: bloquear clave "1234ABCD". O usa «bloquear permanente» para bloquearlo para siempre sin clave.');
         if (doc.rfid.some(r => r.banco === banco)) doc.diag.push({ ln, tipo: "wrn", msg: `Ya hay un rfid en el banco ${banco}: esta línea lo sobrescribe en el mismo tag.` });
-        doc.rfid.push({ ln, fmt, banco, dato, bytes, bloquear: !!el.p.bloquear, intentos: el.p.intentos });
+        doc.rfid.push({ ln, fmt, banco, dato, bytes, bloquear, permanente, clave: el.p.clave, intentos: el.p.intentos });
         return;
       }
       if (cmd === "caja" && !(el.p.ancho > 0 && el.p.alto > 0)) throw new ErrNova("La caja necesita tamaño: caja @ x,y 40x20");
@@ -938,6 +949,8 @@ function analizar(codigo, indice = 0) {
       else { doc.diag.push({ ln, tipo: "err", msg: "Error interno: " + e.message }); console.error(e); }
     }
   });
+  const claves = [...new Set(doc.rfid.filter(r => r.clave).map(r => r.clave))];
+  if (claves.length > 1) doc.diag.push({ ln: doc.rfid[0].ln, tipo: "err", msg: "Un tag tiene una sola clave de acceso: usa la misma clave en todas las líneas rfid." });
   if (doc.rfid.length && doc.copias > 1)
     doc.diag.push({ ln: doc.rfid[0].ln, tipo: "wrn", msg: `Con ${doc.copias} copias, todos los tags quedarán con el mismo dato RFID. Para que cada tag tenga su propio dato, usa una serie (orden «serie»).` });
   if (!doc.tieneEtiqueta) doc.diag.unshift({ ln: 1, tipo: "wrn", msg: "Sin «etiqueta AxB»: uso 100x60 mm por defecto." });
@@ -1286,10 +1299,19 @@ function aZPL(doc, comp, titulo) {
     const intentos = Math.max(1, Math.min(10, doc.rfid.find(r => r.intentos)?.intentos || 3));
     L.push("^FX RFID", `^RS8,,,${intentos}`);
     for (const r of doc.rfid) {
-      const op = r.bloquear ? "L" : "W", f = r.fmt === "hex" ? "H" : "A";
+      const f = r.fmt === "hex" ? "H" : "A";
       const destino = r.banco === "usuario" ? `,0,${r.bytes},3` : "";
       const { fh, d } = zplCampo(r.dato);
-      L.push(`^FX linea ${r.ln}: rfid ${r.banco}`, `^RF${op},${f}${destino}${fh}^FD${d}^FS`);
+      L.push(`^FX linea ${r.ln}: rfid ${r.banco}`, `^RFW,${f}${destino}${fh}^FD${d}^FS`);
+    }
+    // Bloqueo Gen 2: se graba la clave de acceso y luego ^RLM,k,a,e,u (campo vacío = sin cambio)
+    const clave = doc.rfid.find(r => r.clave)?.clave;
+    if (clave) L.push("^FX clave de acceso del tag", `^RFW,H,P^FD${clave}^FS`);
+    const bl = doc.rfid.filter(r => r.bloquear);
+    if (bl.length) {
+      const modo = b => { const r = bl.find(x => x.banco === b); return r ? (r.permanente ? "P" : "L") : ""; };
+      const a = bl.some(r => !r.permanente) ? "L" : "";   // la clave queda bloqueada para que no se pueda leer
+      L.push("^FX bloqueo RFID", `^RLM,,${a},${modo("epc")},${modo("usuario")}^FS`.replace(/,+\^FS$/, "^FS"));
     }
   }
   for (const it of comp.items) {
@@ -1493,7 +1515,7 @@ function actualizar() {
   $("dpiInfo").textContent = `${doc.dpi} ppp${doc.copias > 1 ? ` · ${doc.copias} copias` : ""}`;
   $("nEl").textContent = comp.items.length;
   $("dims").textContent = `${doc.ancho} × ${doc.alto} mm${doc.rfid.length ? " · con RFID" : ""}${doc.serie ? ` · etiqueta ${indiceSerie + 1} de ${doc.serie.cantidad}` : ""}`;
-  $("rfidInfo").textContent = doc.rfid.length ? doc.rfid.map(r => `${r.banco.toUpperCase()} ${r.bytes * 8} bits${r.bloquear ? " (bloqueado)" : ""}`).join(" + ") : "no";
+  $("rfidInfo").textContent = doc.rfid.length ? doc.rfid.map(r => `${r.banco.toUpperCase()} ${r.bytes * 8} bits${r.permanente ? " (bloqueo permanente)" : r.bloquear ? " (bloqueado con clave)" : ""}`).join(" + ") : "no";
   aplicarZoom();
   marcarSeleccion();
   try { localStorage.setItem("nova-borrador", codigo); } catch (e) {}
@@ -1573,7 +1595,9 @@ const DOC_PROP = {
   nivel: ["Corrección de errores del QR: L, M, Q o H.", "nivel "],
   formato: ["Cómo viene el dato RFID: hex o texto.", "formato "],
   banco: ["Memoria del tag: epc o usuario.", "banco "],
-  bloquear: ["Protege el dato RFID contra cambios. Es permanente.", "bloquear"],
+  bloquear: ["Protege el dato RFID contra cambios. Necesita clave, o «permanente».", "bloquear"],
+  clave: ["Clave de acceso del tag: 8 caracteres hex. Guárdala para poder desbloquear.", 'clave "1234ABCD"'],
+  permanente: ["Bloqueo para siempre: nadie podrá cambiar el dato, ni con clave.", "permanente"],
   intentos: ["Etiquetas a probar si falla la grabación RFID (3).", "intentos 3"],
   densidad: ["Puntos por pulgada de la impresora.", "densidad 203"],
   copias: ["Cuántas copias imprimir.", "copias 1"],
@@ -1755,6 +1779,12 @@ function explicarLinea(linea) {
     const def = PROPS[cmd]?.[w];
     if (def && def !== "flag" && palabras[i + 1]) { p[w] = palabras[i + 1].v; i++; } else p[w] = true;
   }
+  // La clave puede ir entre comillas: buscarla en los tokens originales
+  if (p.clave !== undefined) {
+    const ic = reales.findIndex(t => t.t === "word" && norm(t.v) === "clave");
+    const sig = ic >= 0 ? reales[ic + 1] : null;
+    p.clave = sig ? sig.v.replace(/"/g, "") : true;
+  }
   const at = reales.findIndex(t => t.t === "@");
   const x = at >= 0 ? reales[at + 1]?.v : null, y = at >= 0 ? reales[at + 3]?.v : null;
   const dondeX = x == null ? "" : norm(x) === "centro" ? "centrado en el ancho de la etiqueta" : `a ${mm(x)} del borde izquierdo`;
@@ -1793,7 +1823,13 @@ function explicarLinea(linea) {
     case "circulo": return `Dibuja un círculo de <b>${mm(p.diam || "?")}</b> de diámetro ${donde}, ${p.relleno ? "relleno de negro" : `con borde de ${mm(p.borde || "0.3")}`}.`;
     case "barras": return `Genera un código de barras <b>${esc((p.tipo || "code128").toUpperCase())}</b> con ${mostrar(val)} ${donde}, de ${mm(p.alto || "12")} de alto y barra fina de ${mm(p.modulo || "0.25")}${p.sintexto ? ", sin el número debajo" : ", con el número debajo"}.`;
     case "qr": return `Genera un código <b>QR</b> con ${mostrar(val)} ${donde}, de unos ${mm(p.tam || "20")} de lado (corrección ${esc((p.nivel || "m").toUpperCase())}).`;
-    case "rfid": return `Graba ${mostrar(val)} en el <b>chip RFID</b>, banco ${esc(p.banco || "epc")}, como ${p.formato === "texto" ? "texto" : "hexadecimal"}${p.bloquear ? ", y lo <b>bloquea para siempre</b>" : ""}. No se ve impreso.`;
+    case "rfid": {
+      let bloq = "";
+      if (p.permanente) bloq = ", y lo <b>bloquea para siempre</b> (no se podrá cambiar nunca más)";
+      else if (p.bloquear && p.clave) bloq = `, y lo <b>bloquea con la clave ${esc(p.clave)}</b> (se puede desbloquear con esa clave)`;
+      else if (p.bloquear) bloq = ". <b>Falta la clave</b> para bloquear";
+      return `Graba ${mostrar(val)} en el <b>chip RFID</b>, banco ${esc(p.banco || "epc")}, como ${p.formato === "texto" ? "texto" : "hexadecimal"}${bloq}. No se ve impreso.`;
+    }
   }
   return "";
 }
