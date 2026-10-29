@@ -316,6 +316,7 @@ main {
         <option value="activo">Activo fijo con QR</option>
         <option value="credencial">Credencial de evento</option>
         <option value="rfid">Activo con RFID</option>
+        <option value="rfid4419">RFID 44 × 19 mm</option>
       </select>
     </label>
     <button id="copiarNova" class="btn" type="button">Copiar código WENO</button>
@@ -523,6 +524,25 @@ texto "SKU {sku}" @ 4,10 tam 4
 texto "EPC {epc}" @ 4,16 tam 2.6 fuente mono
 barras "{sku}" @ 4,22 alto 12 modulo 0.3
 qr "{epc}" @ 76,6 tam 20
+`,
+  rfid4419: `// Plantilla RFID 44 x 19 mm para inlay UHF pequeño.
+// A 300 ppp el texto chico y las barras finas salen nítidos.
+etiqueta 44x19 densidad 300
+fuente legible
+
+var epc    = "3034257BF7194E4000001A85"
+var sku    = "SKU0042"
+var nombre = "Polera algodón talla M"
+
+rfid "{epc}"
+
+texto "{sku}" @ 1.5,1.2 tam 3.4 negrita
+texto "{nombre}" @ 1.5,5 tam 2.2 ancho 28
+barras "{sku}" @ 1.5,8.4 alto 5.5 modulo 0.17 sintexto
+texto "{epc}" @ 1.5,15.3 tam 1.8 fuente mono
+
+qr "{epc}" @ 31.5,1.5 tam 11
+texto "RFID" @ 31.5,13.4 tam 2 ancho 10.6 centro negrita
 `,
   credencial: `// Credencial 86 x 54 mm (tamaño tarjeta)
 etiqueta 86x54 densidad 300
